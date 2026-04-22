@@ -225,6 +225,12 @@ input, select { font-family: inherit; font-size: 14px; }
 .pnl-positive { color: var(--buy);  font-weight: 600; }
 .pnl-negative { color: var(--sell); font-weight: 600; }
 
+/* ── Live price direction ───────────────────────────────────── */
+.price-up   { color: var(--buy);  font-weight: 700; }
+.price-down { color: var(--sell); font-weight: 700; }
+.price-arrow { margin-right: 4px; font-size: 11px; }
+.text-sm { font-size: 12px; }
+
 /* ── Tabs ───────────────────────────────────────────────────── */
 .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
 .tab-btn {
