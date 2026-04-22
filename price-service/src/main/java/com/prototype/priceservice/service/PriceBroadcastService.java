@@ -3,6 +3,7 @@ package com.prototype.priceservice.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.prototype.priceservice.dto.StockPriceResponse;
 import com.prototype.priceservice.events.OrderCompletedEvent;
+import com.prototype.priceservice.events.PriceUpdatedEvent;
 import com.prototype.priceservice.model.OrderType;
 import com.prototype.priceservice.model.StockPrice;
 import com.prototype.priceservice.repository.StockPriceRepository;
@@ -10,6 +11,7 @@ import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,11 +24,15 @@ public class PriceBroadcastService {
     private static final Logger log = LoggerFactory.getLogger(PriceBroadcastService.class);
     private final StockPriceRepository stockPriceRepository;
     private final SimpMessagingTemplate messagingTemplate;
+    private final KafkaTemplate<String, String> kafkaTemplate;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public PriceBroadcastService(StockPriceRepository stockPriceRepository, SimpMessagingTemplate messagingTemplate) {
+    public PriceBroadcastService(StockPriceRepository stockPriceRepository,
+                                  SimpMessagingTemplate messagingTemplate,
+                                  KafkaTemplate<String, String> kafkaTemplate) {
         this.stockPriceRepository = stockPriceRepository;
         this.messagingTemplate = messagingTemplate;
+        this.kafkaTemplate = kafkaTemplate;
     }
 
     @PostConstruct
@@ -39,6 +45,20 @@ public class PriceBroadcastService {
             broadcastPrices();
             log.info("Seeded initial stock prices");
         }
+    }
+
+    @Transactional
+    public StockPriceResponse createOrUpdateStock(String ticker, BigDecimal price) {
+        StockPrice sp = stockPriceRepository.findByTicker(ticker.toUpperCase()).orElseGet(() -> {
+            StockPrice s = new StockPrice();
+            s.setTicker(ticker.toUpperCase());
+            return s;
+        });
+        sp.setCurrentPrice(price);
+        stockPriceRepository.save(sp);
+        log.info("Admin created/updated stock ticker={} price={}", sp.getTicker(), sp.getCurrentPrice());
+        broadcastPrices();
+        return StockPriceResponse.from(sp);
     }
 
     private void create(String ticker, BigDecimal price) {

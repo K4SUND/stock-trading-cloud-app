@@ -92,6 +92,20 @@ services:
     ports:
       - "8084:8084"
 
+  company-service:
+    build: ../company-service
+    depends_on:
+      - postgres
+      - price-service
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/companydb
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      APP_JWT_SECRET: change-this-secret-key-change-this-secret-key
+      PRICE_SERVICE_URL: http://price-service:8084
+    ports:
+      - "8085:8085"
+
   frontend:
     build: ../frontend
     depends_on:
@@ -99,6 +113,7 @@ services:
       - order-service
       - payment-service
       - price-service
+      - company-service
     ports:
       - "5173:5173"
 

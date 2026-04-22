@@ -1,5 +1,6 @@
 package com.prototype.priceservice.controller;
 
+import com.prototype.priceservice.dto.StockAdminRequest;
 import com.prototype.priceservice.dto.StockPriceResponse;
 import com.prototype.priceservice.service.PriceBroadcastService;
 import org.springframework.http.ResponseEntity;
@@ -24,5 +25,11 @@ public class PriceController {
     @GetMapping("/stocks/{ticker}")
     public ResponseEntity<StockPriceResponse> onePrice(@PathVariable String ticker) {
         return ResponseEntity.ok(priceBroadcastService.onePrice(ticker));
+    }
+
+    // Internal endpoint — called by company-service over the Docker network
+    @PostMapping("/stocks/internal")
+    public ResponseEntity<StockPriceResponse> createOrUpdateStock(@RequestBody StockAdminRequest request) {
+        return ResponseEntity.ok(priceBroadcastService.createOrUpdateStock(request.ticker(), request.price()));
     }
 }
