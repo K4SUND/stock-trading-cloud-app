@@ -10,7 +10,7 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
 
 @Configuration
 @EnableWebSocketMessageBroker
-public class WebConfig implements WebSocketMessageBrokerConfigurer, WebMvcConfigurer {
+public class WebConfig implements WebSocketMessageBrokerConfigurer {
     @Override
     public void configureMessageBroker(MessageBrokerRegistry registry) {
         registry.enableSimpleBroker("/topic");
@@ -22,8 +22,4 @@ public class WebConfig implements WebSocketMessageBrokerConfigurer, WebMvcConfig
         registry.addEndpoint("/ws").setAllowedOriginPatterns("*").withSockJS();
     }
 
-    @Override
-    public void addCorsMappings(CorsRegistry registry) {
-        registry.addMapping("/**").allowedOrigins("*").allowedMethods("*").allowedHeaders("*");
-    }
 }
