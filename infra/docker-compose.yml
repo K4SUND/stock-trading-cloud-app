@@ -46,6 +46,9 @@ services:
       SPRING_DATASOURCE_PASSWORD: postgres
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       APP_JWT_SECRET: change-this-secret-key-change-this-secret-key
+      # Admin bootstrap — change these before deploying to any shared environment
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: Admin@StockTrade2024
     ports:
       - "8081:8081"
 

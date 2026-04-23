@@ -480,6 +480,84 @@ input, select { font-family: inherit; font-size: 14px; }
 .account-type-label { font-size: 13px; font-weight: 700; }
 .account-type-desc { font-size: 11px; color: var(--text-sec); }
 
+/* ── Admin banner ───────────────────────────────────────────── */
+.admin-banner {
+  background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+  border-radius: var(--radius);
+  padding: 20px 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-shadow: var(--shadow-md);
+}
+.admin-banner-icon {
+  width: 48px; height: 48px;
+  border-radius: 12px;
+  background: rgba(99,102,241,.25);
+  border: 1px solid rgba(99,102,241,.4);
+  display: flex; align-items: center; justify-content: center;
+  color: #a5b4fc;
+  flex-shrink: 0;
+}
+.admin-banner-body { flex: 1; }
+.admin-banner-title { font-size: 18px; font-weight: 800; color: #f8fafc; }
+.admin-banner-sub   { font-size: 13px; color: #94a3b8; margin-top: 2px; }
+.admin-banner-sub strong { color: #cbd5e1; }
+.admin-banner-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.admin-health-pill {
+  display: flex; align-items: center; gap: 6px;
+  background: rgba(255,255,255,.07);
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 20px;
+  padding: 5px 12px;
+  font-size: 12px; font-weight: 600; color: #cbd5e1;
+}
+.admin-env-badge {
+  background: rgba(234,179,8,.15);
+  border: 1px solid rgba(234,179,8,.35);
+  color: #fbbf24;
+  font-size: 10px; font-weight: 800;
+  letter-spacing: .8px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  text-transform: uppercase;
+}
+
+/* ── System health grid ─────────────────────────────────────── */
+.health-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  padding: 4px 0;
+}
+.health-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-bottom: 1px solid #f1f5f9;
+  width: 33.333%;
+  min-width: 180px;
+}
+.health-item:nth-last-child(-n+3) { border-bottom: none; }
+.health-name   { font-size: 13px; font-weight: 500; flex: 1; text-transform: capitalize; }
+.health-up     { color: var(--success); font-size: 12px; font-weight: 700; }
+.health-down   { color: var(--danger);  font-size: 12px; font-weight: 700; }
+
+/* ── Delete button ──────────────────────────────────────────── */
+.btn-delete-sm {
+  padding: 5px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--danger-bg);
+  color: var(--danger);
+  border: 1px solid var(--danger-border);
+  font-size: 12px;
+  font-weight: 600;
+  transition: background .12s, opacity .12s;
+}
+.btn-delete-sm:hover:not(:disabled) { background: #fee2e2; }
+.btn-delete-sm:disabled { opacity: .5; cursor: not-allowed; }
+
 /* ── Responsive ─────────────────────────────────────────────── */
 @media (max-width: 900px) {
   .dash-grid, .stats-row, .wallet-grid { grid-template-columns: 1fr; }
