@@ -1,0 +1,19 @@
+server:
+  port: 8085
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/companydb}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+app:
+  jwt:
+    secret: ${APP_JWT_SECRET:change-this-secret-key-change-this-secret-key}
+price-service:
+  url: ${PRICE_SERVICE_URL:http://localhost:8084}
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} %-5level [%thread] %logger - %msg%n"

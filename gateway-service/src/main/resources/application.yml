@@ -1,0 +1,82 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: gateway-service
+  cloud:
+    gateway:
+      # ── Default filters applied to every route ───────────────────────────
+      default-filters:
+        # Downstream services add their own CORS headers; the gateway adds its own.
+        # DedupeResponseHeader keeps only the FIRST value and drops duplicates
+        # so the browser never sees "*, *".
+        - DedupeResponseHeader=Access-Control-Allow-Origin Access-Control-Allow-Credentials Access-Control-Allow-Methods Access-Control-Allow-Headers, RETAIN_FIRST
+
+      # ── Central CORS — single source of truth for the frontend ──────────
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowed-origins: "*"
+            allowed-methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
+            allowed-headers: "*"
+            allow-credentials: false
+
+      routes:
+        # ── user-service ─────────────────────────────────────────────────
+        # Covers /api/users/login, /api/users/register (public)
+        # + /api/users/me (any authenticated)
+        # + /api/users/admin/** (ROLE_ADMIN only — enforced in JwtAuthFilter)
+        - id: user-service
+          uri: ${USER_SERVICE_URL:http://localhost:8081}
+          predicates:
+            - Path=/api/users/**
+
+        # ── order-service — ROLE_USER+ ────────────────────────────────────
+        - id: order-service
+          uri: ${ORDER_SERVICE_URL:http://localhost:8082}
+          predicates:
+            - Path=/api/orders/**
+
+        # ── payment-service — ROLE_USER+ ──────────────────────────────────
+        - id: payment-service
+          uri: ${PAYMENT_SERVICE_URL:http://localhost:8083}
+          predicates:
+            - Path=/api/payments/**
+
+        # ── price-service — fully public ──────────────────────────────────
+        - id: price-service
+          uri: ${PRICE_SERVICE_URL:http://localhost:8084}
+          predicates:
+            - Path=/api/prices/**
+
+        # ── company-service — ROLE_COMPANY or ROLE_ADMIN ─────────────────
+        - id: company-service
+          uri: ${COMPANY_SERVICE_URL:http://localhost:8085}
+          predicates:
+            - Path=/api/companies/**
+
+        # ── WebSocket live feed — public ──────────────────────────────────
+        - id: price-websocket
+          uri: ${PRICE_SERVICE_URL:http://localhost:8084}
+          predicates:
+            - Path=/ws/**
+
+app:
+  jwt:
+    secret: ${APP_JWT_SECRET:change-this-secret-key-change-this-secret-key}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.prototype.gateway: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} %-5level [%thread] %logger - %msg%n"

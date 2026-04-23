@@ -2,6 +2,7 @@ package com.prototype.userservice.service;
 
 import com.prototype.userservice.dto.AuthRequest;
 import com.prototype.userservice.dto.AuthResponse;
+import com.prototype.userservice.dto.RegisterRequest;
 import com.prototype.userservice.model.UserAccount;
 import com.prototype.userservice.repository.UserRepository;
 import com.prototype.userservice.security.JwtService;
@@ -11,9 +12,13 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Set;
+
 @Service
 public class AuthService {
     private static final Logger log = LoggerFactory.getLogger(AuthService.class);
+    private static final Set<String> ALLOWED_SELF_ROLES = Set.of("ROLE_USER", "ROLE_COMPANY");
+
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
@@ -25,15 +30,18 @@ public class AuthService {
     }
 
     @Transactional
-    public void register(AuthRequest request) {
+    public void register(RegisterRequest request) {
         userRepository.findByUsername(request.username()).ifPresent(u -> {
             throw new IllegalArgumentException("Username already exists");
         });
+        String role = (request.role() != null && ALLOWED_SELF_ROLES.contains(request.role()))
+                ? request.role() : "ROLE_USER";
         UserAccount user = new UserAccount();
         user.setUsername(request.username());
         user.setPasswordHash(passwordEncoder.encode(request.password()));
+        user.setRole(role);
         userRepository.save(user);
-        log.info("Registered new user username={} userId={}", user.getUsername(), user.getId());
+        log.info("Registered user username={} userId={} role={}", user.getUsername(), user.getId(), role);
     }
 
     public AuthResponse login(AuthRequest request) {
@@ -42,8 +50,8 @@ public class AuthService {
         if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
             throw new IllegalArgumentException("Invalid credentials");
         }
-        String token = jwtService.generateToken(user.getId(), user.getUsername());
-        log.info("Login successful username={} userId={}", user.getUsername(), user.getId());
-        return new AuthResponse(user.getId(), user.getUsername(), token);
+        String token = jwtService.generateToken(user.getId(), user.getUsername(), user.getRole());
+        log.info("Login username={} userId={} role={}", user.getUsername(), user.getId(), user.getRole());
+        return new AuthResponse(user.getId(), user.getUsername(), token, user.getRole());
     }
 }
