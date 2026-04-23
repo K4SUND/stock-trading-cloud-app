@@ -22,6 +22,14 @@ spring:
 app:
   jwt:
     secret: ${APP_JWT_SECRET:change-this-secret-key-change-this-secret-key}
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus,metrics
+  endpoint:
+    health:
+      show-details: always
 logging:
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} %-5level [%thread] %logger - %msg%n"
