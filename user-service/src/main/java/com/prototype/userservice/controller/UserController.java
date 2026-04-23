@@ -31,6 +31,14 @@ public class UserController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    @GetMapping("/batch")
+    public ResponseEntity<List<UserSummary>> batchUsers(@RequestParam List<Long> ids) {
+        List<UserSummary> users = userRepository.findAllById(ids).stream()
+                .map(u -> new UserSummary(u.getId(), u.getUsername(), u.getRole()))
+                .toList();
+        return ResponseEntity.ok(users);
+    }
+
     @GetMapping("/admin/users")
     public ResponseEntity<List<UserSummary>> allUsers() {
         List<UserSummary> users = userRepository.findAll().stream()
