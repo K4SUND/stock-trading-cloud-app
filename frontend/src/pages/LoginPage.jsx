@@ -9,8 +9,14 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
+  function roleHome(role) {
+    if (role === 'ROLE_COMPANY') return '/company'
+    if (role === 'ROLE_ADMIN')   return '/admin'
+    return '/'
+  }
+
   if (isLoggedIn) {
-    navigate('/', { replace: true })
+    navigate(roleHome(user?.role), { replace: true })
     return null
   }
 
@@ -19,8 +25,8 @@ export default function LoginPage() {
     setError('')
     setLoading(true)
     try {
-      await login(form)
-      navigate('/')
+      const role = await login(form)
+      navigate(roleHome(role))
     } catch {
       setError('Invalid username or password. Please try again.')
     } finally {

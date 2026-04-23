@@ -1,6 +1,7 @@
 package com.prototype.orderservice.controller;
 
 import com.prototype.orderservice.dto.CreateOrderRequest;
+import com.prototype.orderservice.dto.HolderResponse;
 import com.prototype.orderservice.dto.OrderResponse;
 import com.prototype.orderservice.dto.PortfolioResponse;
 import com.prototype.orderservice.service.OrderProcessingService;
@@ -36,5 +37,10 @@ public class OrderController {
     public ResponseEntity<List<PortfolioResponse>> portfolio(Authentication authentication) {
         Long userId = (Long) authentication.getPrincipal();
         return ResponseEntity.ok(orderProcessingService.portfolio(userId));
+    }
+
+    @GetMapping("/holders")
+    public ResponseEntity<List<HolderResponse>> holders(@RequestParam List<String> tickers) {
+        return ResponseEntity.ok(orderProcessingService.holdersForTickers(tickers));
     }
 }
