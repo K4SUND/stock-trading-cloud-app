@@ -2,6 +2,7 @@ package com.prototype.orderservice.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.prototype.orderservice.dto.CreateOrderRequest;
+import com.prototype.orderservice.dto.HolderResponse;
 import com.prototype.orderservice.dto.OrderResponse;
 import com.prototype.orderservice.dto.PortfolioResponse;
 import com.prototype.orderservice.dto.PriceLookupResponse;
@@ -75,6 +76,12 @@ public class OrderProcessingService {
 
     public List<PortfolioResponse> portfolio(Long userId) {
         return portfolioRepository.findByUserId(userId).stream().map(PortfolioResponse::from).toList();
+    }
+
+    public List<HolderResponse> holdersForTickers(List<String> tickers) {
+        List<String> upper = tickers.stream().map(String::toUpperCase).toList();
+        return portfolioRepository.findByStockTickerIn(upper).stream()
+                .map(HolderResponse::from).toList();
     }
 
     @KafkaListener(topics = "payment-result", groupId = "order-service-group")

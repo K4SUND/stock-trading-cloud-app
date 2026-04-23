@@ -14,6 +14,7 @@ export function AuthProvider({ children }) {
     setUser({ userId, username, role })
     localStorage.setItem('token', token)
     localStorage.setItem('user', JSON.stringify({ userId, username, role }))
+    return role
   }, [])
 
   const register = useCallback(async (credentials) => {
