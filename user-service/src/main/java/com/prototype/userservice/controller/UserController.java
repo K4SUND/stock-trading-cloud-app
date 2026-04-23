@@ -52,4 +52,26 @@ public class UserController {
         log.info("Admin changed role userId={} newRole={}", id, newRole);
         return ResponseEntity.ok(new UserSummary(user.getId(), user.getUsername(), user.getRole()));
     }
+
+    @DeleteMapping("/admin/users/{id}")
+    public ResponseEntity<Void> deleteUser(
+            @PathVariable Long id,
+            Authentication auth) {
+        Long requesterId = (Long) auth.getPrincipal();
+        if (requesterId.equals(id)) {
+            throw new IllegalArgumentException("Admin cannot delete their own account");
+        }
+        if (!userRepository.existsById(id)) {
+            return ResponseEntity.notFound().build();
+        }
+        // Prevent deleting the last admin account
+        UserAccount target = userRepository.findById(id).orElseThrow();
+        if ("ROLE_ADMIN".equals(target.getRole()) && userRepository.findAll().stream()
+                .filter(u -> "ROLE_ADMIN".equals(u.getRole())).count() <= 1) {
+            throw new IllegalArgumentException("Cannot delete the only admin account");
+        }
+        userRepository.deleteById(id);
+        log.warn("Admin deleted userId={} username={}", id, target.getUsername());
+        return ResponseEntity.noContent().build();
+    }
 }

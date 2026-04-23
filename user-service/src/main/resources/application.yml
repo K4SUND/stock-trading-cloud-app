@@ -12,6 +12,11 @@ spring:
 app:
   jwt:
     secret: ${APP_JWT_SECRET:change-this-secret-key-change-this-secret-key}
+
+# Admin bootstrap — override both via environment variables in production
+admin:
+  username: ${ADMIN_USERNAME:admin}
+  password: ${ADMIN_PASSWORD:Admin@StockTrade2024}
 logging:
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} %-5level [%thread] %logger - %msg%n"
