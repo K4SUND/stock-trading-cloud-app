@@ -106,14 +106,28 @@ services:
     ports:
       - "8085:8085"
 
-  frontend:
-    build: ../frontend
+  gateway-service:
+    build: ../gateway-service
     depends_on:
       - user-service
       - order-service
       - payment-service
       - price-service
       - company-service
+    environment:
+      USER_SERVICE_URL:    http://user-service:8081
+      ORDER_SERVICE_URL:   http://order-service:8082
+      PAYMENT_SERVICE_URL: http://payment-service:8083
+      PRICE_SERVICE_URL:   http://price-service:8084
+      COMPANY_SERVICE_URL: http://company-service:8085
+      APP_JWT_SECRET: change-this-secret-key-change-this-secret-key
+    ports:
+      - "8080:8080"
+
+  frontend:
+    build: ../frontend
+    depends_on:
+      - gateway-service
     ports:
       - "5173:5173"
 
