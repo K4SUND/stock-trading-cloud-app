@@ -2,13 +2,14 @@ name: Stock Trading CI/CD Pipeline
 
 # ═══════════════════════════════════════════════════════════════════════
 # TRIGGERS
-#   • Every push to master  → full pipeline (CI + Docker + Staging + Prod)
-#   • Every push to develop → CI only (Sonar + Build/Test)
-#   • Every PR to master    → CI only
+#   • push to master        → full pipeline (CI + Docker + Staging + Prod)
+#   • push to develop       → CI only (Sonar + Build/Test)
+#   • push to pipeline-test → CI only (for testing the pipeline itself)
+#   • PR to master          → CI only
 # ═══════════════════════════════════════════════════════════════════════
 on:
   push:
-    branches: [master, develop]
+    branches: [master, develop, pipeline-test]
   pull_request:
     branches: [master]
 
