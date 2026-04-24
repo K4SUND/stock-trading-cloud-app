@@ -1,2 +1,2 @@
 package com.prototype.orderservice.model;
-public enum OrderStatus { PENDING, COMPLETED, FAILED }
+public enum OrderStatus { OPEN, PARTIALLY_FILLED, FILLED, CANCELLED, REJECTED }

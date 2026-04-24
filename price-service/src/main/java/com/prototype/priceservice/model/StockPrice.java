@@ -14,9 +14,9 @@ public class StockPrice {
     @Column(unique = true)
     private String ticker;
     private BigDecimal currentPrice;
-    private BigDecimal lastTradePrice;
-    private BigDecimal lastTradeValue;
-    private String lastTradeType;
+    private BigDecimal previousPrice;   // price before last secondary market trade
+    private BigDecimal lastTradePrice;  // execution price of last secondary market trade
+    private BigDecimal lastTradeValue;  // qty × price of last secondary market trade
     private LocalDateTime lastUpdatedAt;
 
     public Long getId() { return id; }
@@ -25,12 +25,12 @@ public class StockPrice {
     public void setTicker(String ticker) { this.ticker = ticker; }
     public BigDecimal getCurrentPrice() { return currentPrice; }
     public void setCurrentPrice(BigDecimal currentPrice) { this.currentPrice = currentPrice; }
+    public BigDecimal getPreviousPrice() { return previousPrice; }
+    public void setPreviousPrice(BigDecimal previousPrice) { this.previousPrice = previousPrice; }
     public BigDecimal getLastTradePrice() { return lastTradePrice; }
     public void setLastTradePrice(BigDecimal lastTradePrice) { this.lastTradePrice = lastTradePrice; }
     public BigDecimal getLastTradeValue() { return lastTradeValue; }
     public void setLastTradeValue(BigDecimal lastTradeValue) { this.lastTradeValue = lastTradeValue; }
-    public String getLastTradeType() { return lastTradeType; }
-    public void setLastTradeType(String lastTradeType) { this.lastTradeType = lastTradeType; }
     public LocalDateTime getLastUpdatedAt() { return lastUpdatedAt; }
     public void setLastUpdatedAt(LocalDateTime lastUpdatedAt) { this.lastUpdatedAt = lastUpdatedAt; }
 }

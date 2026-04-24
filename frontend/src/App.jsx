@@ -9,6 +9,7 @@ import DashboardPage from './pages/DashboardPage'
 import WalletPage from './pages/WalletPage'
 import CompanyDashboardPage from './pages/CompanyDashboardPage'
 import AdminPage from './pages/AdminPage'
+import MarketsPage from './pages/MarketsPage'
 
 export default function App() {
   return (
@@ -17,8 +18,9 @@ export default function App() {
       <Routes>
         <Route path="/login"    element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
-        <Route path="/"       element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
+        <Route path="/"        element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
         <Route path="/wallet"  element={<ProtectedRoute><WalletPage /></ProtectedRoute>} />
+        <Route path="/markets" element={<ProtectedRoute><MarketsPage /></ProtectedRoute>} />
         <Route path="/company" element={<ProtectedRoute requiredRole="ROLE_COMPANY"><CompanyDashboardPage /></ProtectedRoute>} />
         <Route path="/admin"   element={<ProtectedRoute requiredRole="ROLE_ADMIN"><AdminPage /></ProtectedRoute>} />
         <Route path="*"        element={<Navigate to="/" replace />} />

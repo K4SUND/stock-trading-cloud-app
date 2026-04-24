@@ -31,6 +31,7 @@ export default function Navbar() {
         {isLoggedIn && (
           <div className="navbar-links">
             <Link to="/"        className={`nav-link ${isActive('/')}`}>Dashboard</Link>
+            <Link to="/markets" className={`nav-link ${isActive('/markets')}`}>Markets</Link>
             <Link to="/wallet"  className={`nav-link ${isActive('/wallet')}`}>Wallet</Link>
             {isCompany && <Link to="/company" className={`nav-link ${isActive('/company')}`}>Company</Link>}
             {isAdmin   && <Link to="/admin"   className={`nav-link ${isActive('/admin')}`}>Admin</Link>}
