@@ -1,0 +1,198 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Monitoring Stack: Prometheus + Grafana + AlertManager
+#
+# Deploy with:  kubectl apply -f k8s/monitoring/
+#
+# Access Grafana:  kubectl port-forward svc/grafana 3000:3000 -n monitoring
+#   → http://localhost:3000  (admin / admin)
+# Access Prometheus: kubectl port-forward svc/prometheus 9090:9090 -n monitoring
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Prometheus ──────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v2.51.0
+          args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.retention.time=15d
+          ports:
+            - containerPort: 9090
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+      volumes:
+        - name: config
+          configMap:
+            name: prometheus-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: monitoring
+spec:
+  selector:
+    app: prometheus
+  ports:
+    - port: 9090
+      targetPort: 9090
+
+# ── Grafana ──────────────────────────────────────────────────────────────────
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+        - name: grafana
+          image: grafana/grafana:10.4.0
+          ports:
+            - containerPort: 3000
+          env:
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              value: admin   # change this in production
+            - name: GF_DATASOURCES_DEFAULT_URL
+              value: http://prometheus:9090
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 300m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  type: LoadBalancer   # gives Grafana a public IP — restrict with NetworkPolicy in prod
+  selector:
+    app: grafana
+  ports:
+    - port: 3000
+      targetPort: 3000
+
+# ── AlertManager ─────────────────────────────────────────────────────────────
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-config
+  namespace: monitoring
+data:
+  alertmanager.yml: |
+    global:
+      smtp_smarthost: 'smtp.gmail.com:587'
+      smtp_from: 'alerts@yourdomain.com'
+      smtp_auth_username: 'alerts@yourdomain.com'
+      smtp_auth_password: 'your-app-password'   # use k8s secret in production
+
+    route:
+      group_by: ['alertname', 'job']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      receiver: email-team
+
+      routes:
+        - match:
+            severity: critical
+          receiver: email-team
+          repeat_interval: 30m   # page more frequently for critical alerts
+
+    receivers:
+      - name: email-team
+        email_configs:
+          - to: 'your-team@example.com'
+            send_resolved: true
+
+      # Uncomment to also send to Slack:
+      # - name: slack-team
+      #   slack_configs:
+      #     - api_url: 'https://hooks.slack.com/services/YOUR/WEBHOOK'
+      #       channel: '#alerts'
+      #       send_resolved: true
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alertmanager
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alertmanager
+  template:
+    metadata:
+      labels:
+        app: alertmanager
+    spec:
+      containers:
+        - name: alertmanager
+          image: prom/alertmanager:v0.27.0
+          args:
+            - --config.file=/etc/alertmanager/alertmanager.yml
+          ports:
+            - containerPort: 9093
+          volumeMounts:
+            - name: config
+              mountPath: /etc/alertmanager
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+      volumes:
+        - name: config
+          configMap:
+            name: alertmanager-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alertmanager
+  namespace: monitoring
+spec:
+  selector:
+    app: alertmanager
+  ports:
+    - port: 9093
+      targetPort: 9093

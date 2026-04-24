@@ -1,0 +1,77 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# gateway-service — THE LOAD BALANCER / SINGLE ENTRY POINT
+#
+# This is the only service exposed to the internet (type: LoadBalancer).
+# All frontend traffic and external API calls go through port 8080 here.
+# Kubernetes cloud providers (GKE, EKS, AKS) will provision a real cloud
+# load balancer and assign a public IP automatically.
+#
+# For local testing (minikube): run `minikube tunnel` to get an IP.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gateway-service
+  template:
+    metadata:
+      labels:
+        app: gateway-service
+    spec:
+      containers:
+        - name: gateway-service
+          image: stock-trading-gateway-service
+          ports:
+            - containerPort: 8080
+          env:
+            - name: USER_SERVICE_URL
+              value: http://user-service:8081
+            - name: ORDER_SERVICE_URL
+              value: http://order-service:8082
+            - name: PAYMENT_SERVICE_URL
+              value: http://payment-service:8083
+            - name: PRICE_SERVICE_URL
+              value: http://price-service:8084
+            - name: COMPANY_SERVICE_URL
+              value: http://company-service:8085
+            - name: APP_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: APP_JWT_SECRET
+          readinessProbe:
+            httpGet:
+              path: /actuator/health   # gateway-service has actuator enabled
+              port: 8080
+            initialDelaySeconds: 45
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 300m
+              memory: 384Mi
+            limits:
+              cpu: 800m
+              memory: 768Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway-service
+spec:
+  type: LoadBalancer   # cloud LB — gets a public IP from the cloud provider
+  selector:
+    app: gateway-service
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
