@@ -8,8 +8,6 @@ import com.prototype.priceservice.repository.StockPriceRepository;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.cache.annotation.CacheEvict;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
@@ -64,9 +62,6 @@ public class PriceBroadcastService {
 
     // ── Secondary market trade: price = execution price from matching engine ──
     // Captures previousPrice BEFORE updating so the change can be computed.
-    // Cache evicted before the method runs so the subsequent broadcastPrices() DB read
-    // is fresh, and the next REST call re-populates the cache with updated data.
-    @CacheEvict(cacheNames = {"prices-all", "prices-one"}, allEntries = true, beforeInvocation = true)
     @KafkaListener(topics = "trade-executed", groupId = "price-service-group")
     @Transactional
     public void onTradeExecuted(String payload) throws Exception {
@@ -97,7 +92,6 @@ public class PriceBroadcastService {
     }
 
     // ── Called by company-service when a stock is listed (sets initial price) ─
-    @CacheEvict(cacheNames = {"prices-all", "prices-one"}, allEntries = true, beforeInvocation = true)
     @Transactional
     public StockPriceResponse createOrUpdateStock(String ticker, BigDecimal price) {
         StockPrice sp = stockPriceRepository.findByTicker(ticker.toUpperCase()).orElseGet(() -> {
@@ -115,15 +109,11 @@ public class PriceBroadcastService {
         return buildResponse(sp);
     }
 
-    @Cacheable(cacheNames = "prices-all", key = "'all'")
     public List<StockPriceResponse> allPrices() {
-        log.debug("Cache miss — loading all prices from DB");
         return stockPriceRepository.findAll().stream().map(this::buildResponse).toList();
     }
 
-    @Cacheable(cacheNames = "prices-one", key = "#ticker")
     public StockPriceResponse onePrice(String ticker) {
-        log.debug("Cache miss — loading price for {} from DB", ticker);
         return stockPriceRepository.findByTicker(ticker.toUpperCase())
             .map(this::buildResponse)
             .orElseThrow(() -> new IllegalArgumentException("Ticker not found: " + ticker));
