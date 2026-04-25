@@ -33,16 +33,32 @@ export default function AdminPage() {
   const [userDetail,    setUserDetail]    = useState(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailTab,     setDetailTab]     = useState('portfolio')
+  const [marketOpen,    setMarketOpen]    = useState(null)
+  const [marketBusy,    setMarketBusy]    = useState(false)
 
   const load = useCallback(async () => {
-    const [usersRes, healthRes] = await Promise.allSettled([
+    const [usersRes, healthRes, marketRes] = await Promise.allSettled([
       userApi.get('/admin/users', { headers }),
       axios.get(`${GATEWAY}/actuator/health`),
+      orderApi.get('/market/status'),
     ])
     if (usersRes.status === 'fulfilled')  setUsers(usersRes.value.data)
     else setMsg({ type: 'error', text: 'Failed to load users.' })
     if (healthRes.status === 'fulfilled') setHealth(healthRes.value.data)
+    if (marketRes.status === 'fulfilled') setMarketOpen(marketRes.value.data.open)
   }, [token])
+
+  async function toggleMarket() {
+    setMarketBusy(true); setMsg(null)
+    try {
+      const endpoint = marketOpen ? '/admin/market/close' : '/admin/market/open'
+      const res = await orderApi.post(endpoint, {}, { headers })
+      setMarketOpen(res.data.open)
+      setMsg({ type: 'success', text: `Market is now ${res.data.open ? 'OPEN' : 'CLOSED'}.` })
+    } catch {
+      setMsg({ type: 'error', text: 'Failed to update market status.' })
+    } finally { setMarketBusy(false) }
+  }
 
   useEffect(() => { load() }, [load])
 
@@ -149,6 +165,34 @@ export default function AdminPage() {
           <span className="stat-label">Admins</span>
           <span className="stat-value">{counts.ROLE_ADMIN || 0}</span>
         </div>
+      </div>
+
+      {/* ── Market control ─────────────────────────────────────────── */}
+      <div className="card">
+        <div className="card-header">
+          <h2 className="card-title">Market Control</h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {marketOpen !== null && (
+              <span className={`badge ${marketOpen ? 'badge-success' : 'badge-danger'}`}
+                    style={{ fontSize: 13, padding: '4px 12px' }}>
+                {marketOpen ? 'OPEN' : 'CLOSED'}
+              </span>
+            )}
+            <button
+              className={marketOpen ? 'btn-delete-sm' : 'btn-primary'}
+              style={{ minWidth: 110 }}
+              disabled={marketBusy || marketOpen === null}
+              onClick={toggleMarket}
+            >
+              {marketBusy ? '…' : marketOpen ? 'Close Market' : 'Open Market'}
+            </button>
+          </div>
+        </div>
+        <p className="text-muted" style={{ padding: '0 0 8px 0', margin: 0, fontSize: 13 }}>
+          {marketOpen
+            ? 'Trading is currently enabled. Click "Close Market" to halt all new orders.'
+            : 'Trading is currently halted. Click "Open Market" to allow new orders.'}
+        </p>
       </div>
 
       {/* ── System health ──────────────────────────────────────────── */}

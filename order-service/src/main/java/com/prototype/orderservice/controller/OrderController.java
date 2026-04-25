@@ -91,7 +91,24 @@ public class OrderController {
         return ResponseEntity.ok(orderProcessingService.recentMarketTrades());
     }
 
+    @GetMapping("/market/status")
+    public ResponseEntity<java.util.Map<String, Object>> marketStatus() {
+        return ResponseEntity.ok(java.util.Map.of("open", orderProcessingService.isMarketOpen()));
+    }
+
     // ── Admin endpoints ───────────────────────────────────────────────────────
+
+    @PostMapping("/admin/market/open")
+    public ResponseEntity<java.util.Map<String, Object>> openMarket() {
+        orderProcessingService.setMarketOpen(true);
+        return ResponseEntity.ok(java.util.Map.of("open", true));
+    }
+
+    @PostMapping("/admin/market/close")
+    public ResponseEntity<java.util.Map<String, Object>> closeMarket() {
+        orderProcessingService.setMarketOpen(false);
+        return ResponseEntity.ok(java.util.Map.of("open", false));
+    }
 
     @GetMapping("/admin/users/{userId}/orders")
     public ResponseEntity<List<OrderResponse>> adminUserOrders(@PathVariable Long userId) {
