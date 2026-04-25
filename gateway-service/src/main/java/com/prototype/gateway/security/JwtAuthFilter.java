@@ -32,11 +32,14 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
 
     // ── Public paths — no JWT required ─────────────────────────────────
     private static final List<String> PUBLIC_PREFIXES = List.of(
-            "/api/users/login",    // POST  — login
-            "/api/users/register", // POST  — self-registration
-            "/api/prices/",        // GET   — market prices (price-service has no auth)
-            "/ws/",                // WebSocket live feed
-            "/actuator/"           // health / info
+            "/api/users/login",        // POST  — login
+            "/api/users/register",     // POST  — self-registration
+            "/api/prices/",            // GET   — market prices (price-service has no auth)
+            "/api/book/",              // GET   — order book snapshots (public read)
+            "/api/orders/market/",     // GET   — market trade feed (public read)
+            "/api/companies/public/",  // GET   — public company & stock listings (all users)
+            "/ws/",                    // WebSocket live feed
+            "/actuator/"               // health / info
     );
 
     // ── Role-restricted prefixes ────────────────────────────────────────

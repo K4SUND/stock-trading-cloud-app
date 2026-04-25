@@ -46,7 +46,6 @@ services:
       SPRING_DATASOURCE_PASSWORD: postgres
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       APP_JWT_SECRET: change-this-secret-key-change-this-secret-key
-      # Admin bootstrap — change these before deploying to any shared environment
       ADMIN_USERNAME: admin
       ADMIN_PASSWORD: Admin@StockTrade2024
     ports:
@@ -57,13 +56,14 @@ services:
     depends_on:
       - postgres
       - kafka
+      - payment-service
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/ordersdb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       APP_JWT_SECRET: change-this-secret-key-change-this-secret-key
-      PRICE_SERVICE_URL: http://price-service:8084
+      PAYMENT_SERVICE_URL: http://payment-service:8083
     ports:
       - "8082:8082"
 
@@ -78,7 +78,6 @@ services:
       SPRING_DATASOURCE_PASSWORD: postgres
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       APP_JWT_SECRET: change-this-secret-key-change-this-secret-key
-      PRICE_SERVICE_URL: http://price-service:8084
     ports:
       - "8083:8083"
 
@@ -100,14 +99,27 @@ services:
     depends_on:
       - postgres
       - price-service
+      - order-service
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/companydb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
       APP_JWT_SECRET: change-this-secret-key-change-this-secret-key
       PRICE_SERVICE_URL: http://price-service:8084
+      ORDER_SERVICE_URL: http://order-service:8082
     ports:
       - "8085:8085"
+
+  matching-engine-service:
+    build: ../matching-engine-service
+    depends_on:
+      - kafka
+      - order-service
+    environment:
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      ORDER_SERVICE_URL: http://order-service:8082
+    ports:
+      - "8086:8086"
 
   gateway-service:
     build: ../gateway-service
@@ -117,12 +129,14 @@ services:
       - payment-service
       - price-service
       - company-service
+      - matching-engine-service
     environment:
-      USER_SERVICE_URL:    http://user-service:8081
-      ORDER_SERVICE_URL:   http://order-service:8082
-      PAYMENT_SERVICE_URL: http://payment-service:8083
-      PRICE_SERVICE_URL:   http://price-service:8084
-      COMPANY_SERVICE_URL: http://company-service:8085
+      USER_SERVICE_URL:            http://user-service:8081
+      ORDER_SERVICE_URL:           http://order-service:8082
+      PAYMENT_SERVICE_URL:         http://payment-service:8083
+      PRICE_SERVICE_URL:           http://price-service:8084
+      COMPANY_SERVICE_URL:         http://company-service:8085
+      MATCHING_ENGINE_SERVICE_URL: http://matching-engine-service:8086
       APP_JWT_SECRET: change-this-secret-key-change-this-secret-key
     ports:
       - "8080:8080"

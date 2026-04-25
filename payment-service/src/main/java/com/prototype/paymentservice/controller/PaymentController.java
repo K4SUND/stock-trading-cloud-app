@@ -1,5 +1,6 @@
 package com.prototype.paymentservice.controller;
 
+import com.prototype.paymentservice.dto.DeductRequest;
 import com.prototype.paymentservice.dto.TopupRequest;
 import com.prototype.paymentservice.dto.WalletResponse;
 import com.prototype.paymentservice.service.WalletService;
@@ -27,5 +28,12 @@ public class PaymentController {
     public ResponseEntity<WalletResponse> wallet(Authentication authentication) {
         Long userId = (Long) authentication.getPrincipal();
         return ResponseEntity.ok(walletService.getWallet(userId));
+    }
+
+    // Called by order-service synchronously during IPO purchase — no JWT needed
+    @PostMapping("/internal/deduct")
+    public ResponseEntity<Void> internalDeduct(@RequestBody DeductRequest request) {
+        walletService.deduct(request.userId(), request.amount());
+        return ResponseEntity.ok().build();
     }
 }
