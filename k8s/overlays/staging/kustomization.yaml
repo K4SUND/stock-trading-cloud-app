@@ -1,0 +1,45 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Everything in base/ is inherited. Here we override namespace, replicas,
+# and image tags specifically for the staging (QA) environment.
+namespace: staging
+
+resources:
+  - ../../base
+
+# Image section — the pipeline updates these via:
+#   kustomize edit set image stock-trading-<svc>=<user>/stock-trading-<svc>:sha-<commit>
+# Placeholders below are replaced on every deploy so staging always runs
+# the exact commit that passed Sonar + tests.
+images:
+  - name: stock-trading-user-service
+    newName: placeholder/stock-trading-user-service
+    newTag: latest
+  - name: stock-trading-order-service
+    newName: placeholder/stock-trading-order-service
+    newTag: latest
+  - name: stock-trading-payment-service
+    newName: placeholder/stock-trading-payment-service
+    newTag: latest
+  - name: stock-trading-price-service
+    newName: placeholder/stock-trading-price-service
+    newTag: latest
+  - name: stock-trading-company-service
+    newName: placeholder/stock-trading-company-service
+    newTag: latest
+  - name: stock-trading-gateway-service
+    newName: placeholder/stock-trading-gateway-service
+    newTag: latest
+  - name: stock-trading-frontend
+    newName: placeholder/stock-trading-frontend
+    newTag: latest
+
+# Staging = 1 replica per service (saves cloud resources during QA)
+patches:
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+    target:
+      kind: Deployment

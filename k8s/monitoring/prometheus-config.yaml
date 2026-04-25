@@ -1,0 +1,133 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Prometheus scrape configuration
+#
+# To enable full JVM + HTTP metrics on each Spring Boot service, add these
+# Maven dependencies to each service's pom.xml:
+#
+#   <dependency>
+#     <groupId>org.springframework.boot</groupId>
+#     <artifactId>spring-boot-starter-actuator</artifactId>
+#   </dependency>
+#   <dependency>
+#     <groupId>io.micrometer</groupId>
+#     <artifactId>micrometer-registry-prometheus</artifactId>
+#   </dependency>
+#
+# And in application.yml:
+#   management:
+#     endpoints:
+#       web:
+#         exposure:
+#           include: health,prometheus,metrics
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: monitoring
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+
+    alerting:
+      alertmanagers:
+        - static_configs:
+            - targets: ['alertmanager:9093']
+
+    rule_files:
+      - /etc/prometheus/alerts.yml
+
+    scrape_configs:
+      # Prometheus scrapes itself
+      - job_name: prometheus
+        static_configs:
+          - targets: ['localhost:9090']
+
+      # gateway-service (actuator already enabled)
+      - job_name: gateway-service
+        metrics_path: /actuator/prometheus
+        static_configs:
+          - targets: ['gateway-service.production:8080']
+        relabel_configs:
+          - source_labels: [__address__]
+            target_label: instance
+
+      # All other Spring Boot services (need micrometer-prometheus added)
+      - job_name: user-service
+        metrics_path: /actuator/prometheus
+        static_configs:
+          - targets: ['user-service.production:8081']
+
+      - job_name: order-service
+        metrics_path: /actuator/prometheus
+        static_configs:
+          - targets: ['order-service.production:8082']
+
+      - job_name: payment-service
+        metrics_path: /actuator/prometheus
+        static_configs:
+          - targets: ['payment-service.production:8083']
+
+      - job_name: price-service
+        metrics_path: /actuator/prometheus
+        static_configs:
+          - targets: ['price-service.production:8084']
+
+      - job_name: company-service
+        metrics_path: /actuator/prometheus
+        static_configs:
+          - targets: ['company-service.production:8085']
+
+  alerts.yml: |
+    groups:
+      - name: stock-trading-alerts
+        rules:
+
+          # Alert if any service pod is down
+          - alert: ServiceDown
+            expr: up == 0
+            for: 1m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Service {{ $labels.job }} is down"
+              description: "{{ $labels.instance }} has been unreachable for > 1 minute."
+
+          # Alert if gateway HTTP error rate > 5%
+          - alert: HighErrorRate
+            expr: |
+              rate(http_server_requests_seconds_count{status=~"5..",job="gateway-service"}[5m])
+              / rate(http_server_requests_seconds_count{job="gateway-service"}[5m]) > 0.05
+            for: 2m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High HTTP 5xx error rate on gateway"
+              description: "Error rate is {{ humanizePercentage $value }} over the last 5 minutes."
+
+          # Alert if p99 latency > 2s
+          - alert: HighLatency
+            expr: |
+              histogram_quantile(0.99,
+                rate(http_server_requests_seconds_bucket{job="gateway-service"}[5m])
+              ) > 2
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High p99 latency on gateway"
+              description: "p99 latency is {{ $value | humanizeDuration }}."
+
+          # Alert if JVM heap > 80%
+          - alert: HighMemoryUsage
+            expr: |
+              jvm_memory_used_bytes{area="heap"}
+              / jvm_memory_max_bytes{area="heap"} > 0.80
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High JVM heap usage in {{ $labels.job }}"
+              description: "Heap is at {{ humanizePercentage $value }}."
