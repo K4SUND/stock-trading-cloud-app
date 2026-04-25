@@ -91,6 +91,18 @@ public class OrderController {
         return ResponseEntity.ok(orderProcessingService.recentMarketTrades());
     }
 
+    // ── Admin endpoints ───────────────────────────────────────────────────────
+
+    @GetMapping("/admin/users/{userId}/orders")
+    public ResponseEntity<List<OrderResponse>> adminUserOrders(@PathVariable Long userId) {
+        return ResponseEntity.ok(orderProcessingService.userOrders(userId));
+    }
+
+    @GetMapping("/admin/users/{userId}/portfolio")
+    public ResponseEntity<List<PortfolioResponse>> adminUserPortfolio(@PathVariable Long userId) {
+        return ResponseEntity.ok(orderProcessingService.portfolio(userId));
+    }
+
     // ── Internal endpoints ────────────────────────────────────────────────────
 
     // Called by company-service when a stock is listed (IPO allocation setup)

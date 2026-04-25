@@ -26,6 +26,7 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/**").permitAll()
                         .requestMatchers("/api/orders/internal/**").permitAll()
                         .requestMatchers("/api/orders/market/**").permitAll()
+                        .requestMatchers("/api/orders/admin/**").hasAuthority("ROLE_ADMIN")
                         .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();

@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import axios from 'axios'
-import { authHeaders, userApi } from '../api'
+import { authHeaders, userApi, orderApi, paymentApi } from '../api'
 import { useAuth } from '../context/AuthContext'
 
 const GATEWAY = 'http://localhost:8080'
@@ -23,12 +23,16 @@ export default function AdminPage() {
   const { token, user: me } = useAuth()
   const headers = authHeaders(token)
 
-  const [users,    setUsers]    = useState([])
-  const [health,   setHealth]   = useState(null)
-  const [search,   setSearch]   = useState('')
-  const [msg,      setMsg]      = useState(null)
-  const [saving,   setSaving]   = useState(null)
-  const [deleting, setDeleting] = useState(null)
+  const [users,         setUsers]         = useState([])
+  const [health,        setHealth]        = useState(null)
+  const [search,        setSearch]        = useState('')
+  const [msg,           setMsg]           = useState(null)
+  const [saving,        setSaving]        = useState(null)
+  const [deleting,      setDeleting]      = useState(null)
+  const [selectedUser,  setSelectedUser]  = useState(null)
+  const [userDetail,    setUserDetail]    = useState(null)
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [detailTab,     setDetailTab]     = useState('portfolio')
 
   const load = useCallback(async () => {
     const [usersRes, healthRes] = await Promise.allSettled([
@@ -64,6 +68,29 @@ export default function AdminPage() {
       const detail = err?.response?.data?.error || 'Failed to delete user.'
       setMsg({ type: 'error', text: detail })
     } finally { setDeleting(null) }
+  }
+
+  async function openUserDetail(user) {
+    setSelectedUser(user)
+    setUserDetail(null)
+    setDetailLoading(true)
+    setDetailTab('portfolio')
+    const [walletRes, portfolioRes, ordersRes] = await Promise.allSettled([
+      paymentApi.get(`/admin/users/${user.id}/wallet`, { headers }),
+      orderApi.get(`/admin/users/${user.id}/portfolio`, { headers }),
+      orderApi.get(`/admin/users/${user.id}/orders`,   { headers }),
+    ])
+    setUserDetail({
+      wallet:    walletRes.status    === 'fulfilled' ? walletRes.value.data    : null,
+      portfolio: portfolioRes.status === 'fulfilled' ? portfolioRes.value.data : [],
+      orders:    ordersRes.status    === 'fulfilled' ? ordersRes.value.data    : [],
+    })
+    setDetailLoading(false)
+  }
+
+  function closeDetail() {
+    setSelectedUser(null)
+    setUserDetail(null)
   }
 
   const counts = ROLES.reduce((acc, r) => ({
@@ -193,7 +220,9 @@ export default function AdminPage() {
                   <tr key={u.id}>
                     <td className="text-muted">{u.id}</td>
                     <td>
-                      <strong>{u.username}</strong>
+                      <span className="username-link" onClick={() => openUserDetail(u)}>
+                        <strong>{u.username}</strong>
+                      </span>
                       {isMe && <span className="you-badge"> (you)</span>}
                     </td>
                     <td><span className={`badge ${meta.cls}`}>{meta.label}</span></td>
@@ -233,6 +262,154 @@ export default function AdminPage() {
           </table>
         </div>
       </div>
+
+      {/* ── User detail modal ──────────────────────────────────────── */}
+      {selectedUser && (
+        <div className="modal-overlay" onClick={closeDetail}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+
+            {/* Header */}
+            <div className="modal-header">
+              <div className="modal-avatar">
+                {selectedUser.username.charAt(0).toUpperCase()}
+              </div>
+              <div className="modal-user-info">
+                <div className="modal-username">{selectedUser.username}</div>
+                <div className="modal-user-sub">
+                  <span className={`badge ${(ROLE_META[selectedUser.role] || ROLE_META.ROLE_USER).cls}`}>
+                    {(ROLE_META[selectedUser.role] || ROLE_META.ROLE_USER).label}
+                  </span>
+                  <span style={{ marginLeft: 8 }}>User ID: {selectedUser.id}</span>
+                </div>
+              </div>
+              <button className="modal-close" onClick={closeDetail}>&#x2715;</button>
+            </div>
+
+            {/* Stats */}
+            <div className="modal-stats">
+              <div className="modal-stat">
+                <span className="modal-stat-label">Wallet Balance</span>
+                <span className="modal-stat-value">
+                  {detailLoading ? '…' :
+                    userDetail?.wallet != null
+                      ? `$${Number(userDetail.wallet.balance).toFixed(2)}`
+                      : '—'}
+                </span>
+              </div>
+              <div className="modal-stat">
+                <span className="modal-stat-label">Holdings</span>
+                <span className="modal-stat-value">
+                  {detailLoading ? '…' : (userDetail?.portfolio?.length ?? '—')}
+                </span>
+              </div>
+              <div className="modal-stat">
+                <span className="modal-stat-label">Total Orders</span>
+                <span className="modal-stat-value">
+                  {detailLoading ? '…' : (userDetail?.orders?.length ?? '—')}
+                </span>
+              </div>
+            </div>
+
+            {/* Tabs */}
+            <div className="modal-tabs">
+              <button
+                className={`modal-tab ${detailTab === 'portfolio' ? 'modal-tab-active' : ''}`}
+                onClick={() => setDetailTab('portfolio')}
+              >Portfolio</button>
+              <button
+                className={`modal-tab ${detailTab === 'orders' ? 'modal-tab-active' : ''}`}
+                onClick={() => setDetailTab('orders')}
+              >Order History</button>
+            </div>
+
+            {/* Body */}
+            <div className="modal-body">
+              {detailLoading && <div className="modal-loading">Loading…</div>}
+
+              {!detailLoading && detailTab === 'portfolio' && (
+                userDetail?.portfolio?.length === 0
+                  ? <div className="modal-empty">No portfolio holdings.</div>
+                  : (
+                    <div className="table-scroll">
+                      <table className="data-table">
+                        <thead>
+                          <tr>
+                            <th>Ticker</th>
+                            <th className="text-right">Qty</th>
+                            <th className="text-right">Avg Cost</th>
+                            <th className="text-right">Est. Value</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {userDetail?.portfolio?.map(p => (
+                            <tr key={p.stockTicker}>
+                              <td><span className="ticker-badge">{p.stockTicker}</span></td>
+                              <td className="text-right">{p.quantity}</td>
+                              <td className="text-right price-cell">${Number(p.avgCostBasis).toFixed(2)}</td>
+                              <td className="text-right price-cell">
+                                ${(p.quantity * Number(p.avgCostBasis)).toFixed(2)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )
+              )}
+
+              {!detailLoading && detailTab === 'orders' && (
+                userDetail?.orders?.length === 0
+                  ? <div className="modal-empty">No orders found.</div>
+                  : (
+                    <div className="table-scroll">
+                      <table className="data-table">
+                        <thead>
+                          <tr>
+                            <th>#</th>
+                            <th>Ticker</th>
+                            <th>Type</th>
+                            <th className="text-right">Qty</th>
+                            <th className="text-right">Price</th>
+                            <th>Status</th>
+                            <th>Date</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {userDetail?.orders?.slice().sort((a, b) => b.createdAt - a.createdAt).map(o => {
+                            const statusCls = o.status === 'COMPLETED' ? 'badge-success'
+                              : o.status === 'CANCELLED' ? 'badge-neutral'
+                              : o.status === 'FAILED'    ? 'badge-danger'
+                              : 'badge-open'
+                            return (
+                              <tr key={o.id}>
+                                <td className="text-muted">{o.id}</td>
+                                <td><span className="ticker-badge">{o.stockTicker}</span></td>
+                                <td className={o.type === 'BUY' ? 'type-buy' : 'type-sell'}>{o.type}</td>
+                                <td className="text-right">{o.quantity}</td>
+                                <td className="text-right price-cell">
+                                  {o.avgFillPrice != null
+                                    ? `$${Number(o.avgFillPrice).toFixed(2)}`
+                                    : o.limitPrice != null
+                                      ? `$${Number(o.limitPrice).toFixed(2)}`
+                                      : 'MKT'}
+                                </td>
+                                <td><span className={`badge ${statusCls}`}>{o.status}</span></td>
+                                <td className="text-muted">
+                                  {new Date(o.createdAt).toLocaleDateString()}
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )
+              )}
+            </div>
+
+          </div>
+        </div>
+      )}
 
     </div>
   )
