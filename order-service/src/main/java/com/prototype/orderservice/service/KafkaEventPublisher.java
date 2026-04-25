@@ -2,8 +2,8 @@ package com.prototype.orderservice.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.prototype.orderservice.events.OrderCompletedEvent;
-import com.prototype.orderservice.events.OrderCreatedEvent;
+import com.prototype.orderservice.events.OrderCancelledEvent;
+import com.prototype.orderservice.events.OrderPlacedEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -19,13 +19,9 @@ public class KafkaEventPublisher {
         this.kafkaTemplate = kafkaTemplate;
     }
 
-    public void publishOrderCreated(OrderCreatedEvent event) {
-        publish("order-created", event);
-    }
+    public void publishOrderPlaced(OrderPlacedEvent event) { publish("order-placed", event); }
 
-    public void publishOrderCompleted(OrderCompletedEvent event) {
-        publish("order-completed", event);
-    }
+    public void publishOrderCancelled(OrderCancelledEvent event) { publish("order-cancelled", event); }
 
     private void publish(String topic, Object event) {
         try {

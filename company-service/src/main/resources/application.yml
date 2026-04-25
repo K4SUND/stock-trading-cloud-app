@@ -14,6 +14,8 @@ app:
     secret: ${APP_JWT_SECRET:change-this-secret-key-change-this-secret-key}
 price-service:
   url: ${PRICE_SERVICE_URL:http://localhost:8084}
+order-service:
+  url: ${ORDER_SERVICE_URL:http://localhost:8082}
 management:
   endpoints:
     web:

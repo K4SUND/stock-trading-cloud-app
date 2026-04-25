@@ -116,7 +116,7 @@ input, select { font-family: inherit; font-size: 14px; }
 /* ── Stats row ──────────────────────────────────────────────── */
 .stats-row {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 14px;
 }
 .stat-card {
@@ -278,15 +278,15 @@ input, select { font-family: inherit; font-size: 14px; }
 .type-btn-inactive:hover { background: #f1f5f9; }
 .order-summary {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  gap: 6px;
   background: var(--bg);
   border-radius: var(--radius-sm);
   padding: 12px 14px;
   border: 1px solid var(--border);
 }
-.summary-label { font-size: 12px; color: var(--text-sec); font-weight: 600; }
-.summary-value { font-size: 18px; font-weight: 700; }
+.summary-label { font-size: 12px; color: var(--text-sec); font-weight: 600; text-transform: uppercase; letter-spacing: .3px; }
+.summary-value { font-size: 16px; font-weight: 700; }
 .btn-buy  { background: var(--success); color: #fff; padding: 13px; border-radius: var(--radius-sm); font-weight: 700; font-size: 14px; transition: opacity .15s; }
 .btn-sell { background: var(--danger);  color: #fff; padding: 13px; border-radius: var(--radius-sm); font-weight: 700; font-size: 14px; transition: opacity .15s; }
 .btn-buy:hover, .btn-sell:hover { opacity: .88; }
@@ -451,6 +451,12 @@ input, select { font-family: inherit; font-size: 14px; }
 
 /* ── Extra badge colours ─────────────────────────────────────── */
 .badge-info { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+.badge-open { background: #f0f9ff; color: #0369a1; border: 1px solid #bae6fd; }
+
+/* ── Order mode button (LIMIT / MARKET) ─────────────────────── */
+.type-btn-mode-active {
+  background: #eff6ff; border-color: var(--primary); color: var(--primary);
+}
 
 /* ── Company / Admin forms ───────────────────────────────────── */
 .company-form { padding: 20px; display: flex; flex-direction: column; gap: 14px; }
@@ -558,9 +564,237 @@ input, select { font-family: inherit; font-size: 14px; }
 .btn-delete-sm:hover:not(:disabled) { background: #fee2e2; }
 .btn-delete-sm:disabled { opacity: .5; cursor: not-allowed; }
 
+/* ── Order Book ─────────────────────────────────────────────── */
+.book-container { display: flex; flex-direction: column; }
+.book-side      { display: flex; flex-direction: column; }
+.book-side-header {
+  font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .6px;
+  padding: 7px 16px; border-bottom: 1px solid var(--border);
+}
+.book-bids-header          { color: var(--buy);  background: #f0fdf4; }
+.book-asks-header          { color: var(--sell); background: #fef2f2; }
+.book-asks-header-ipo      { color: #7c3aed; background: #f5f3ff;
+                              font-size: 11px; font-weight: 600; letter-spacing: .03em;
+                              padding: 6px 12px; text-transform: uppercase; }
+.book-asks-header-secondary{ color: #0369a1; background: #f0f9ff;
+                              font-size: 11px; font-weight: 600; letter-spacing: .03em;
+                              padding: 6px 12px; text-transform: uppercase; }
+.book-cols-header {
+  display: grid; grid-template-columns: 1fr 80px 50px;
+  padding: 4px 16px; font-size: 11px; color: var(--text-muted);
+  font-weight: 600; text-transform: uppercase; letter-spacing: .3px;
+  border-bottom: 1px solid var(--border);
+}
+.book-row {
+  display: grid; grid-template-columns: 1fr 80px 50px;
+  padding: 5px 16px; position: relative;
+  font-size: 13px; font-variant-numeric: tabular-nums;
+  border-bottom: 1px solid #f8fafc;
+}
+.book-row::before {
+  content: ''; position: absolute; inset: 0; right: auto;
+  width: var(--bar-pct, 0%); opacity: .1; pointer-events: none;
+}
+.book-row-bid::before { background: var(--buy); left: auto; right: 0; }
+.book-row-ask::before { background: var(--sell); left: auto; right: 0; }
+.book-price { font-weight: 600; }
+.book-row-bid .book-price { color: var(--buy); }
+.book-row-ask .book-price { color: var(--sell); }
+.book-qty    { text-align: right; font-weight: 500; }
+.book-orders { text-align: right; color: var(--text-muted); }
+.book-spread {
+  padding: 5px 16px; font-size: 12px; font-weight: 600;
+  color: var(--text-sec); background: #f8fafc; text-align: center;
+  border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+}
+.book-empty { padding: 14px 16px; text-align: center; color: var(--text-muted); font-size: 13px; }
+
+/* ── Markets page ───────────────────────────────────────────── */
+.markets-header {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  margin-bottom: 4px;
+}
+.markets-title { font-size: 22px; font-weight: 800; }
+.markets-sub   { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+
+.markets-layout {
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  gap: 20px;
+  align-items: start;
+}
+.markets-buy-panel   { display: flex; flex-direction: column; gap: 16px; }
+.markets-empty-panel {
+  background: var(--surface); border-radius: var(--radius);
+  border: 2px dashed var(--border); min-height: 280px;
+  display: flex; align-items: center; justify-content: center;
+}
+
+.markets-price-row {
+  display: flex; gap: 0;
+  border-top: 1px solid var(--border);
+}
+.markets-price-block {
+  flex: 1; padding: 14px 16px; display: flex; flex-direction: column; gap: 4px;
+  border-right: 1px solid var(--border);
+}
+.markets-price-block:last-child { border-right: none; }
+.markets-price-val { font-size: 18px; font-weight: 700; }
+
+.markets-desc {
+  font-size: 12px; color: var(--text-muted); margin-top: 4px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 280px;
+}
+
+/* ── Small action buttons ────────────────────────────────────── */
+.btn-buy-sm {
+  padding: 4px 12px; border-radius: var(--radius-sm);
+  background: var(--success-bg); color: var(--success);
+  border: 1px solid var(--success-border);
+  font-size: 12px; font-weight: 600; transition: background .12s; white-space: nowrap;
+}
+.btn-buy-sm:hover { background: #dcfce7; }
+
+/* ── IPO tag (legacy) ───────────────────────────────────────── */
+.ipo-tag {
+  display: inline-block; margin-left: 6px;
+  font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px;
+  color: #7c3aed; background: #ede9fe; border: 1px solid #c4b5fd;
+  padding: 1px 5px; border-radius: 4px; vertical-align: middle;
+}
+
+/* ── Market phase badges (in listings table) ─────────────────── */
+.market-phase-badge {
+  display: inline-block; margin-left: 5px;
+  font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;
+  padding: 1px 5px; border-radius: 4px; vertical-align: middle;
+}
+.ipo-phase   { color: #7c3aed; background: #ede9fe; border: 1px solid #c4b5fd; }
+.sec-phase   { color: #0369a1; background: #e0f2fe; border: 1px solid #bae6fd; }
+
+/* ── Market section card (primary / secondary divider) ───────── */
+.market-section-card { padding: 0; }
+.market-section-card .trade-form,
+.market-section-card .order-summary,
+.market-section-card .form-group,
+.market-section-card .info-box,
+.market-section-card .alert { margin-left: 16px; margin-right: 16px; }
+.market-section-card .btn-full { margin: 0 16px 16px; width: calc(100% - 32px); }
+.market-section-card .form-row-2 { margin-left: 16px; margin-right: 16px; }
+
+.market-section-label {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+  padding: 5px 16px; border-radius: var(--radius) var(--radius) 0 0;
+}
+.market-section-primary   { color: #7c3aed; background: #f5f3ff; border-bottom: 2px solid #c4b5fd; }
+.market-section-secondary { color: #0369a1; background: #f0f9ff; border-bottom: 2px solid #bae6fd; }
+
+/* ── IPO info grid ──────────────────────────────────────────── */
+.ipo-info-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 8px; margin: 12px 16px;
+  background: #f8fafc; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 12px;
+}
+.ipo-info-item   { display: flex; flex-direction: column; gap: 4px; }
+.ipo-price       { font-size: 20px; font-weight: 700; color: var(--buy); }
+.ipo-avail       { font-size: 14px; font-weight: 600; color: var(--text); }
+
+/* ── BUY active toggle ───────────────────────────────────────── */
+.type-btn-buy-active {
+  background: #f0fdf4; color: var(--buy);
+  border: 1.5px solid var(--buy); font-weight: 700;
+}
+
+/* ── Equal-split grid (order book row) ──────────────────────── */
+.dash-grid-equal {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+/* ── Inline chips ───────────────────────────────────────────── */
+.pos-chip {
+  display: inline-block; margin-left: 6px;
+  font-size: 11px; font-weight: 600; color: var(--primary);
+  background: #eff6ff; border: 1px solid #bfdbfe;
+  padding: 1px 6px; border-radius: 10px; vertical-align: middle;
+}
+.mine-chip {
+  display: inline-block; margin-left: 6px;
+  font-size: 11px; font-weight: 700; color: var(--success);
+  background: var(--success-bg); border: 1px solid var(--success-border);
+  padding: 1px 6px; border-radius: 10px; vertical-align: middle;
+}
+.row-mine { background: #f0fdf4; }
+
+/* ── Empty states ───────────────────────────────────────────── */
+.empty-state {
+  padding: 40px 20px; text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+}
+.empty-state-icon { font-size: 32px; }
+.empty-state-title { font-size: 15px; font-weight: 700; color: var(--text); }
+.empty-state-sub   { font-size: 13px; color: var(--text-muted); max-width: 320px; }
+
+/* ── Filter bar (Orders tab) ────────────────────────────────── */
+.filter-bar {
+  display: flex; gap: 6px; padding: 10px 20px 0;
+}
+.filter-btn {
+  padding: 5px 14px; border-radius: 20px; font-size: 12px; font-weight: 600;
+  border: 1.5px solid var(--border); background: var(--bg); color: var(--text-sec);
+  transition: all .12s;
+}
+.filter-btn:hover { border-color: var(--primary); color: var(--primary); }
+.filter-btn-active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+/* ── Fill progress (partial orders) ────────────────────────── */
+.fill-cell { display: flex; flex-direction: column; gap: 3px; align-items: flex-end; }
+.fill-bar   { width: 60px; height: 4px; background: var(--border); border-radius: 2px; }
+.fill-bar-inner { height: 100%; background: var(--primary); border-radius: 2px; }
+
+/* ── Table total row ────────────────────────────────────────── */
+.table-total-row td {
+  border-top: 2px solid var(--border);
+  padding-top: 10px;
+  font-size: 13px;
+}
+
+/* ── Quick sell button ──────────────────────────────────────── */
+.btn-sell-sm {
+  padding: 4px 12px; border-radius: var(--radius-sm);
+  background: var(--danger-bg); color: var(--danger);
+  border: 1px solid var(--danger-border);
+  font-size: 12px; font-weight: 600; transition: background .12s;
+}
+.btn-sell-sm:hover { background: #fee2e2; }
+
+/* ── Summary rows in trade form ─────────────────────────────── */
+.summary-row {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 13px; padding: 2px 0;
+}
+.summary-row + .summary-row { border-top: 1px dashed var(--border); padding-top: 6px; margin-top: 2px; }
+
+/* ── Font helpers ───────────────────────────────────────────── */
+.font-med { font-weight: 600; }
+.text-sm  { font-size: 12px; }
+
+/* ── Clickable book rows ─────────────────────────────────────── */
+.book-row-clickable { cursor: pointer; }
+.book-row-clickable:hover { filter: brightness(.95); }
+
+/* ── Neutral badge (Cancelled) ───────────────────────────────── */
+.badge-neutral { background: #f1f5f9; color: #64748b; border: 1px solid #e2e8f0; }
+
 /* ── Responsive ─────────────────────────────────────────────── */
+@media (max-width: 1100px) {
+  .stats-row { grid-template-columns: repeat(3, 1fr); }
+}
 @media (max-width: 900px) {
-  .dash-grid, .stats-row, .wallet-grid { grid-template-columns: 1fr; }
+  .dash-grid, .dash-grid-equal, .wallet-grid, .markets-layout { grid-template-columns: 1fr; }
   .stats-row { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 500px) {

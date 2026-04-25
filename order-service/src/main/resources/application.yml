@@ -5,10 +5,14 @@ spring:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/ordersdb}
     username: ${SPRING_DATASOURCE_USERNAME:postgres}
     password: ${SPRING_DATASOURCE_PASSWORD:postgres}
+  sql:
+    init:
+      mode: always          # run schema.sql on every startup (safe — uses IF EXISTS)
   jpa:
     hibernate:
       ddl-auto: update
     open-in-view: false
+    defer-datasource-initialization: true  # schema.sql runs BEFORE Hibernate DDL
   kafka:
     bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     consumer:
@@ -22,6 +26,8 @@ spring:
 app:
   jwt:
     secret: ${APP_JWT_SECRET:change-this-secret-key-change-this-secret-key}
+payment-service:
+  url: ${PAYMENT_SERVICE_URL:http://localhost:8083}
 price-service:
   url: ${PRICE_SERVICE_URL:http://localhost:8084}
 management:

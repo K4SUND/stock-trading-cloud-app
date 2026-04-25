@@ -56,6 +56,12 @@ spring:
           predicates:
             - Path=/api/companies/**
 
+        # ── matching-engine — order book (public read) ────────────────────
+        - id: matching-engine
+          uri: ${MATCHING_ENGINE_SERVICE_URL:http://localhost:8086}
+          predicates:
+            - Path=/api/book/**
+
         # ── WebSocket live feed — public ──────────────────────────────────
         - id: price-websocket
           uri: ${PRICE_SERVICE_URL:http://localhost:8084}
