@@ -44,6 +44,7 @@ jobs:
           - price-service
           - company-service
           - gateway-service
+          - matching-engine-service
     steps:
       - uses: actions/checkout@v4
         with:
@@ -87,6 +88,7 @@ jobs:
           - price-service
           - company-service
           - gateway-service
+          - matching-engine-service
     steps:
       - uses: actions/checkout@v4
 
@@ -137,6 +139,7 @@ jobs:
           - price-service
           - company-service
           - gateway-service
+          - matching-engine-service
           - frontend
     steps:
       - uses: actions/checkout@v4
@@ -172,10 +175,16 @@ jobs:
   #   • replicas = 1 (lower resource usage)
   #   • exact image SHA tags
   #
-  # SETUP NEEDED:
-  #   GitHub Secrets: KUBE_CONFIG_STAGING (base64 of your kubeconfig)
-  #   GitHub Secrets: APP_JWT_SECRET, DB_PASSWORD
-  #   GitHub Environment: "staging" (Settings → Environments)
+  # GITHUB SECRETS NEEDED (app repo only):
+  #   AWS_ACCESS_KEY_ID     → same key as infra repo
+  #   AWS_SECRET_ACCESS_KEY → same key as infra repo
+  #   AWS_REGION            → ap-south-1
+  #   APP_JWT_SECRET        → shared JWT secret across all services
+  #   ADMIN_USERNAME        → admin bootstrap username
+  #   ADMIN_PASSWORD        → admin bootstrap password
+  #
+  # NO kubeconfig secret needed — pipeline fetches cluster info from SSM
+  # NO DB_PASSWORD secret needed — pipeline fetches it from SSM
   # ═══════════════════════════════════════════════════════════════════════
   deploy-staging:
     name: Deploy → Staging
@@ -188,19 +197,40 @@ jobs:
       - name: Set up kubectl
         uses: azure/setup-kubectl@v4
 
-      - name: Configure kubeconfig
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Read cluster info and RDS values from SSM
         run: |
-          mkdir -p ~/.kube
-          echo "${{ secrets.KUBE_CONFIG_STAGING }}" | base64 -d > ~/.kube/config
+          CLUSTER=$(aws ssm get-parameter --name "/stock-trading/cluster-name" --query "Parameter.Value" --output text)
+          RDS_HOST=$(aws ssm get-parameter --name "/stock-trading/rds-host" --query "Parameter.Value" --output text)
+          DB_PASSWORD=$(aws ssm get-parameter --name "/stock-trading/rds-password" --with-decryption --query "Parameter.Value" --output text)
+          echo "CLUSTER=${CLUSTER}" >> $GITHUB_ENV
+          echo "RDS_HOST=${RDS_HOST}" >> $GITHUB_ENV
+          echo "DB_PASSWORD=${DB_PASSWORD}" >> $GITHUB_ENV
+          echo "Cluster: ${CLUSTER} | RDS: ${RDS_HOST}"
+
+      - name: Configure kubectl (automatic — no kubeconfig secret needed)
+        run: aws eks update-kubeconfig --name ${{ env.CLUSTER }} --region ${{ secrets.AWS_REGION }}
 
       - name: Apply namespaces
         run: kubectl apply -f k8s/namespaces.yaml
 
-      - name: Create/update app secrets
+      - name: Create db-config ConfigMap (RDS hostname for pods)
+        run: |
+          kubectl -n staging create configmap db-config \
+            --from-literal=RDS_HOST="${{ env.RDS_HOST }}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Create app-secrets
         run: |
           kubectl -n staging create secret generic app-secrets \
             --from-literal=APP_JWT_SECRET="${{ secrets.APP_JWT_SECRET }}" \
-            --from-literal=DB_PASSWORD="${{ secrets.DB_PASSWORD }}" \
+            --from-literal=DB_PASSWORD="${{ env.DB_PASSWORD }}" \
             --from-literal=ADMIN_USERNAME="${{ secrets.ADMIN_USERNAME }}" \
             --from-literal=ADMIN_PASSWORD="${{ secrets.ADMIN_PASSWORD }}" \
             --dry-run=client -o yaml | kubectl apply -f -
@@ -214,16 +244,19 @@ jobs:
       - name: Stamp image SHA tags (staging overlay)
         run: |
           cd k8s/overlays/staging
-          for svc in user-service order-service payment-service price-service company-service gateway-service frontend; do
+          for svc in user-service order-service payment-service price-service company-service gateway-service matching-engine-service frontend; do
             kustomize edit set image stock-trading-${svc}=${{ env.IMAGE_BASE }}-${svc}:${{ env.IMAGE_TAG }}
           done
 
       - name: Apply manifests (Kustomize)
         run: kubectl apply -k k8s/overlays/staging
 
+      - name: Wait for db-init Job to complete
+        run: kubectl wait --for=condition=complete job/db-init -n staging --timeout=120s
+
       - name: Wait for all rollouts
         run: |
-          for svc in user-service order-service payment-service price-service company-service gateway-service frontend; do
+          for svc in user-service order-service payment-service price-service company-service gateway-service matching-engine-service frontend; do
             echo "Waiting for $svc..."
             kubectl rollout status deployment/$svc -n staging --timeout=180s
           done
@@ -315,6 +348,25 @@ jobs:
       - name: Set up kubectl
         uses: azure/setup-kubectl@v4
 
+      - name: Configure AWS credentials (to read from SSM)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Fetch RDS values from SSM
+        run: |
+          RDS_HOST=$(aws ssm get-parameter \
+            --name "/stock-trading/production/rds-host" \
+            --query "Parameter.Value" --output text)
+          DB_PASSWORD=$(aws ssm get-parameter \
+            --name "/stock-trading/production/rds-password" \
+            --with-decryption \
+            --query "Parameter.Value" --output text)
+          echo "RDS_HOST=${RDS_HOST}" >> $GITHUB_ENV
+          echo "DB_PASSWORD=${DB_PASSWORD}" >> $GITHUB_ENV
+
       - name: Configure kubeconfig
         run: |
           mkdir -p ~/.kube
@@ -323,11 +375,17 @@ jobs:
       - name: Apply namespaces
         run: kubectl apply -f k8s/namespaces.yaml
 
-      - name: Create/update app secrets
+      - name: Create db-config ConfigMap
+        run: |
+          kubectl -n production create configmap db-config \
+            --from-literal=RDS_HOST="${{ env.RDS_HOST }}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Create app-secrets
         run: |
           kubectl -n production create secret generic app-secrets \
             --from-literal=APP_JWT_SECRET="${{ secrets.APP_JWT_SECRET }}" \
-            --from-literal=DB_PASSWORD="${{ secrets.DB_PASSWORD }}" \
+            --from-literal=DB_PASSWORD="${{ env.DB_PASSWORD }}" \
             --from-literal=ADMIN_USERNAME="${{ secrets.ADMIN_USERNAME }}" \
             --from-literal=ADMIN_PASSWORD="${{ secrets.ADMIN_PASSWORD }}" \
             --dry-run=client -o yaml | kubectl apply -f -
@@ -341,16 +399,20 @@ jobs:
       - name: Stamp image SHA tags (production overlay)
         run: |
           cd k8s/overlays/production
-          for svc in user-service order-service payment-service price-service company-service gateway-service frontend; do
+          for svc in user-service order-service payment-service price-service company-service gateway-service matching-engine-service frontend; do
             kustomize edit set image stock-trading-${svc}=${{ env.IMAGE_BASE }}-${svc}:${{ env.IMAGE_TAG }}
           done
+
 
       - name: Apply manifests (Kustomize)
         run: kubectl apply -k k8s/overlays/production
 
+      - name: Wait for db-init Job to complete
+        run: kubectl wait --for=condition=complete job/db-init -n production --timeout=120s
+
       - name: Wait for all rollouts
         run: |
-          for svc in user-service order-service payment-service price-service company-service gateway-service frontend; do
+          for svc in user-service order-service payment-service price-service company-service gateway-service matching-engine-service frontend; do
             echo "Waiting for $svc..."
             kubectl rollout status deployment/$svc -n production --timeout=300s
           done

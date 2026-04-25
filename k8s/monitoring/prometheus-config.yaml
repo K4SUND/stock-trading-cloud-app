@@ -80,6 +80,11 @@ data:
         static_configs:
           - targets: ['company-service.production:8085']
 
+      - job_name: matching-engine-service
+        metrics_path: /actuator/prometheus
+        static_configs:
+          - targets: ['matching-engine-service.production:8086']
+
   alerts.yml: |
     groups:
       - name: stock-trading-alerts

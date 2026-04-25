@@ -18,8 +18,13 @@ spec:
           ports:
             - containerPort: 8081
           env:
+            - name: DB_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: db-config
+                  key: RDS_HOST
             - name: SPRING_DATASOURCE_URL
-              value: jdbc:postgresql://postgres:5432/usersdb
+              value: "jdbc:postgresql://$(DB_HOST):5432/usersdb"
             - name: SPRING_DATASOURCE_USERNAME
               value: postgres
             - name: SPRING_DATASOURCE_PASSWORD
