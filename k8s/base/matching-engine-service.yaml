@@ -1,0 +1,57 @@
+# matching-engine-service — stateless order matcher
+# No database (pure in-memory logic), no JWT.
+# Depends on: kafka (events), order-service (HTTP callbacks)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: matching-engine-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: matching-engine-service
+  template:
+    metadata:
+      labels:
+        app: matching-engine-service
+    spec:
+      containers:
+        - name: matching-engine-service
+          image: stock-trading-matching-engine-service   # replaced by kustomize overlay
+          ports:
+            - containerPort: 8086
+          env:
+            - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
+              value: kafka:9092
+            - name: ORDER_SERVICE_URL
+              value: http://order-service:8082
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8086
+            initialDelaySeconds: 45
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8086
+            initialDelaySeconds: 60
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: matching-engine-service
+spec:
+  selector:
+    app: matching-engine-service
+  ports:
+    - port: 8086
+      targetPort: 8086

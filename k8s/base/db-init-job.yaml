@@ -1,0 +1,62 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# db-init-job — Creates the 5 application databases on RDS
+#
+# This Job runs ONCE on first deploy (or if you manually delete it).
+# It connects to the RDS instance and runs CREATE DATABASE for each service.
+# Kubernetes automatically retries if it fails (e.g. RDS not ready yet).
+#
+# The RDS host comes from the 'db-config' ConfigMap which the pipeline
+# creates from SSM Parameter Store values.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-init
+spec:
+  backoffLimit: 10   # retry up to 10 times if RDS is slow to start
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: db-init
+          image: postgres:15
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              echo "Waiting for RDS to be ready..."
+              until pg_isready -h $DB_HOST -p 5432 -U postgres; do
+                echo "RDS not ready yet, retrying in 5s..."
+                sleep 5
+              done
+
+              echo "Creating application databases..."
+              PGPASSWORD=$DB_PASSWORD psql \
+                -h $DB_HOST -p 5432 -U postgres -d postgres \
+                -c "CREATE DATABASE usersdb;"    2>/dev/null || echo "usersdb already exists"
+              PGPASSWORD=$DB_PASSWORD psql \
+                -h $DB_HOST -p 5432 -U postgres -d postgres \
+                -c "CREATE DATABASE ordersdb;"   2>/dev/null || echo "ordersdb already exists"
+              PGPASSWORD=$DB_PASSWORD psql \
+                -h $DB_HOST -p 5432 -U postgres -d postgres \
+                -c "CREATE DATABASE paymentsdb;" 2>/dev/null || echo "paymentsdb already exists"
+              PGPASSWORD=$DB_PASSWORD psql \
+                -h $DB_HOST -p 5432 -U postgres -d postgres \
+                -c "CREATE DATABASE pricesdb;"   2>/dev/null || echo "pricesdb already exists"
+              PGPASSWORD=$DB_PASSWORD psql \
+                -h $DB_HOST -p 5432 -U postgres -d postgres \
+                -c "CREATE DATABASE companydb;"  2>/dev/null || echo "companydb already exists"
+
+              echo "All databases ready."
+          env:
+            - name: DB_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: db-config
+                  key: RDS_HOST
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: DB_PASSWORD
