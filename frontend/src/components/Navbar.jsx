@@ -16,6 +16,12 @@ export default function Navbar() {
 
   function handleLogout() { logout(); navigate('/login') }
   function isActive(path) { return location.pathname === path ? 'nav-link-active' : '' }
+  function isActiveTab(tab) {
+    if (location.pathname !== '/admin') return ''
+    const params = new URLSearchParams(location.search)
+    const current = params.get('tab') || 'admin'
+    return current === tab ? 'nav-link-active' : ''
+  }
 
   return (
     <nav className="navbar">
@@ -29,13 +35,25 @@ export default function Navbar() {
         </div>
 
         {isLoggedIn && (
-          <div className="navbar-links">
-            <Link to="/"        className={`nav-link ${isActive('/')}`}>Dashboard</Link>
-            <Link to="/markets" className={`nav-link ${isActive('/markets')}`}>Markets</Link>
-            <Link to="/wallet"  className={`nav-link ${isActive('/wallet')}`}>Wallet</Link>
-            {isCompany && <Link to="/company" className={`nav-link ${isActive('/company')}`}>Company</Link>}
-            {isAdmin   && <Link to="/admin"   className={`nav-link ${isActive('/admin')}`}>Admin</Link>}
-          </div>
+            <div className="navbar-links">
+              {isAdmin ? (
+                  <>
+                    <Link to="/admin?tab=admin"     className={`nav-link ${isActiveTab('admin')}`}>Admin</Link>
+                    <Link to="/admin?tab=dashboard" className={`nav-link ${isActiveTab('dashboard')}`}>Dashboard</Link>
+                    <Link to="/admin?tab=market"    className={`nav-link ${isActiveTab('market')}`}>Market</Link>
+
+                  </>
+              ) : (
+                  <>
+                    <Link to="/dashboard" className={`nav-link ${isActive('/dashboard')}`}>Dashboard</Link>
+                    <Link to="/markets"   className={`nav-link ${isActive('/markets')}`}>Markets</Link>
+                    <Link to="/wallet"    className={`nav-link ${isActive('/wallet')}`}>Wallet</Link>
+                    {isCompany && (
+                        <Link to="/company" className={`nav-link ${isActive('/company')}`}>Company</Link>
+                    )}
+                  </>
+              )}
+            </div>
         )}
 
         <div className="navbar-right">

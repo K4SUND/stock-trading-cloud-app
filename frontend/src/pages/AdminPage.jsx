@@ -1,6 +1,9 @@
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useRef, useState, useCallback } from 'react'
 import axios from 'axios'
-import { authHeaders, userApi, orderApi, paymentApi } from '../api'
+import { Client } from '@stomp/stompjs'
+import SockJS from 'sockjs-client'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { authHeaders, bookApi, companyApi, orderApi, paymentApi, priceApi, userApi } from '../api'
 import { useAuth } from '../context/AuthContext'
 
 const GATEWAY = 'http://localhost:8080'
@@ -11,10 +14,52 @@ const ROLE_META = {
   ROLE_ADMIN:   { label: 'Admin',   cls: 'badge-danger'  },
 }
 
+function fmt$(n) { return `$${Number(n).toFixed(2)}` }
+
 function ShieldIcon() {
   return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    </svg>
+  )
+}
+function UsersIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+    </svg>
+  )
+}
+function ActivityIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+    </svg>
+  )
+}
+function ServerIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/>
+      <line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/>
+    </svg>
+  )
+}
+function ChartIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/>
+      <line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/>
+    </svg>
+  )
+}
+function MarketIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="7" width="20" height="14" rx="2"/>
+      <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>
+      <line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/>
     </svg>
   )
 }
@@ -22,7 +67,18 @@ function ShieldIcon() {
 export default function AdminPage() {
   const { token, user: me } = useAuth()
   const headers = authHeaders(token)
+  const location = useLocation()
+  const navigate = useNavigate()
 
+  const tabFromUrl = new URLSearchParams(location.search).get('tab') || 'admin'
+  const [activeTab, setActiveTab] = useState(tabFromUrl)
+
+  useEffect(() => {
+    const tab = new URLSearchParams(location.search).get('tab') || 'admin'
+    setActiveTab(tab)
+  }, [location.search])
+
+  // ── Admin tab state ────────────────────────────────────────────────────────
   const [users,         setUsers]         = useState([])
   const [health,        setHealth]        = useState(null)
   const [search,        setSearch]        = useState('')
@@ -36,32 +92,118 @@ export default function AdminPage() {
   const [marketOpen,    setMarketOpen]    = useState(null)
   const [marketBusy,    setMarketBusy]    = useState(false)
 
-  const load = useCallback(async () => {
+  // ── Dashboard tab state ────────────────────────────────────────────────────
+  const [stocks,      setStocks]      = useState([])
+  const [priceDirs,   setPriceDirs]   = useState({})
+  const [marketTrades,setMarketTrades]= useState([])
+  const [orderBook,   setOrderBook]   = useState(null)
+  const [bookTicker,  setBookTicker]  = useState(null)
+  const [bookLoading, setBookLoading] = useState(false)
+  const [wsConnected, setWsConnected] = useState(false)
+  const [activity,    setActivity]    = useState([])
+  const prevPricesRef = useRef({})
+
+  // ── Market tab state ───────────────────────────────────────────────────────
+  const [listings,       setListings]       = useState([])
+  const [ipoAllocations, setIpoAllocations] = useState([])
+
+  // ── Load helpers ───────────────────────────────────────────────────────────
+  const loadAdmin = useCallback(async () => {
     const [usersRes, healthRes, marketRes] = await Promise.allSettled([
       userApi.get('/admin/users', { headers }),
       axios.get(`${GATEWAY}/actuator/health`),
       orderApi.get('/market/status'),
     ])
-    if (usersRes.status === 'fulfilled')  setUsers(usersRes.value.data)
+    if (usersRes.status  === 'fulfilled') setUsers(usersRes.value.data)
     else setMsg({ type: 'error', text: 'Failed to load users.' })
     if (healthRes.status === 'fulfilled') setHealth(healthRes.value.data)
     if (marketRes.status === 'fulfilled') setMarketOpen(marketRes.value.data.open)
   }, [token])
 
-  async function toggleMarket() {
-    setMarketBusy(true); setMsg(null)
-    try {
-      const endpoint = marketOpen ? '/admin/market/close' : '/admin/market/open'
-      const res = await orderApi.post(endpoint, {}, { headers })
-      setMarketOpen(res.data.open)
-      setMsg({ type: 'success', text: `Market is now ${res.data.open ? 'OPEN' : 'CLOSED'}.` })
-    } catch {
-      setMsg({ type: 'error', text: 'Failed to update market status.' })
-    } finally { setMarketBusy(false) }
+  const loadDashboard = useCallback(async () => {
+    const [stocksRes, tradesRes, marketRes] = await Promise.allSettled([
+      priceApi.get('/stocks'),
+      orderApi.get('/market/trades'),
+      orderApi.get('/market/status'),
+    ])
+    if (stocksRes.status === 'fulfilled') setStocks(stocksRes.value.data)
+    if (tradesRes.status === 'fulfilled') setMarketTrades(tradesRes.value.data)
+    if (marketRes.status === 'fulfilled') setMarketOpen(marketRes.value.data.open)
+  }, [token])
+
+  const loadMarket = useCallback(async () => {
+    const [listRes, ipoRes] = await Promise.allSettled([
+      companyApi.get('/public/stocks'),
+      orderApi.get('/ipo', { headers }),
+    ])
+    if (listRes.status === 'fulfilled') setListings(listRes.value.data)
+    if (ipoRes.status  === 'fulfilled') setIpoAllocations(ipoRes.value.data)
+  }, [token])
+
+  useEffect(() => {
+    loadAdmin()
+    loadDashboard()
+    loadMarket()
+  }, [loadAdmin, loadDashboard, loadMarket])
+
+  function pushActivity(text) {
+    setActivity(prev => [`[${new Date().toLocaleTimeString()}] ${text}`, ...prev].slice(0, 30))
   }
 
-  useEffect(() => { load() }, [load])
+  // WebSocket: live price feed (always active)
+  useEffect(() => {
+    const client = new Client({
+      webSocketFactory: () => new SockJS(`${GATEWAY}/ws`),
+      reconnectDelay: 5000,
+      onConnect: () => {
+        setWsConnected(true)
+        client.subscribe('/topic/prices', (msg) => {
+          const data = JSON.parse(msg.body)
+          setStocks(prev => {
+            const dirs = {}
+            data.forEach(s => {
+              const old = prevPricesRef.current[s.ticker]
+              if (old !== undefined && Number(s.currentPrice) !== Number(old)) {
+                dirs[s.ticker] = Number(s.currentPrice) > Number(old) ? 'up' : 'down'
+                const arrow = dirs[s.ticker] === 'up' ? '▲' : '▼'
+                pushActivity(`${s.ticker} ${arrow} ${fmt$(s.currentPrice)} — trade executed`)
+                setTimeout(() => {
+                  orderApi.get('/market/trades').then(r => setMarketTrades(r.data)).catch(() => {})
+                }, 800)
+              } else {
+                dirs[s.ticker] = prevPricesRef.current[`dir_${s.ticker}`] || 'neutral'
+              }
+              prevPricesRef.current[s.ticker] = s.currentPrice
+              prevPricesRef.current[`dir_${s.ticker}`] = dirs[s.ticker]
+            })
+            setPriceDirs(dirs)
+            return data
+          })
+        })
+        pushActivity('Connected to live price feed')
+      },
+      onDisconnect: () => { setWsConnected(false); pushActivity('Disconnected from price feed') },
+      onStompError:  () => setWsConnected(false),
+    })
+    client.activate()
+    return () => client.deactivate()
+  }, [])
 
+  async function loadOrderBook(ticker) {
+    setBookTicker(ticker)
+    setBookLoading(true)
+    setOrderBook(null)
+    try {
+      const r = await bookApi.get(`/${ticker}`)
+      setOrderBook(r.data)
+    } catch {
+      setOrderBook({ ticker, bids: [], asks: [] })
+    } finally {
+      setBookLoading(false)
+    }
+  }
+
+  // ── Admin tab handlers ─────────────────────────────────────────────────────
   async function changeRole(userId, newRole) {
     setSaving(userId); setMsg(null)
     try {
@@ -86,15 +228,25 @@ export default function AdminPage() {
     } finally { setDeleting(null) }
   }
 
+  async function toggleMarket() {
+    setMarketBusy(true); setMsg(null)
+    try {
+      const endpoint = marketOpen ? '/admin/market/close' : '/admin/market/open'
+      const res = await orderApi.post(endpoint, {}, { headers })
+      setMarketOpen(res.data.open)
+      setMsg({ type: 'success', text: `Market is now ${res.data.open ? 'OPEN' : 'CLOSED'}.` })
+    } catch {
+      setMsg({ type: 'error', text: 'Failed to update market status.' })
+    } finally { setMarketBusy(false) }
+  }
+
   async function openUserDetail(user) {
-    setSelectedUser(user)
-    setUserDetail(null)
-    setDetailLoading(true)
-    setDetailTab('portfolio')
+    setSelectedUser(user); setUserDetail(null)
+    setDetailLoading(true); setDetailTab('portfolio')
     const [walletRes, portfolioRes, ordersRes] = await Promise.allSettled([
-      paymentApi.get(`/admin/users/${user.id}/wallet`, { headers }),
+      paymentApi.get(`/admin/users/${user.id}/wallet`,  { headers }),
       orderApi.get(`/admin/users/${user.id}/portfolio`, { headers }),
-      orderApi.get(`/admin/users/${user.id}/orders`,   { headers }),
+      orderApi.get(`/admin/users/${user.id}/orders`,    { headers }),
     ])
     setUserDetail({
       wallet:    walletRes.status    === 'fulfilled' ? walletRes.value.data    : null,
@@ -104,215 +256,634 @@ export default function AdminPage() {
     setDetailLoading(false)
   }
 
-  function closeDetail() {
-    setSelectedUser(null)
-    setUserDetail(null)
-  }
+  function closeDetail() { setSelectedUser(null); setUserDetail(null) }
 
+  // ── Derived values ─────────────────────────────────────────────────────────
   const counts = ROLES.reduce((acc, r) => ({
     ...acc, [r]: users.filter(u => u.role === r).length
   }), {})
-
   const filtered = users.filter(u =>
     u.username.toLowerCase().includes(search.toLowerCase()) ||
     u.role.toLowerCase().includes(search.toLowerCase())
   )
-
   const healthStatus = health?.status ?? null
   const healthUp     = healthStatus === 'UP'
   const components   = health?.components ? Object.entries(health.components) : []
 
+  const getPrice = (ticker) => stocks.find(s => s.ticker === ticker)
+  const getIpo   = (ticker) => ipoAllocations.find(a => a.ticker === ticker)
+  const ipoActiveCount = listings.filter(l => {
+    const ipo = getIpo(l.ticker)
+    return ipo && ipo.remainingShares > 0
+  }).length
+  const totalVolume = marketTrades.reduce((s, t) => s + (t.value || 0), 0)
+
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="page">
 
-      {/* ── Admin identity banner ──────────────────────────────────── */}
-      <div className="admin-banner">
-        <div className="admin-banner-icon">
-          <ShieldIcon />
-        </div>
-        <div className="admin-banner-body">
-          <div className="admin-banner-title">System Administration</div>
-          <div className="admin-banner-sub">
-            Signed in as <strong>{me?.username}</strong> &middot; Full platform access
+      {/* ════════════════════════════════════════════════════════════════════ */}
+      {/* ADMIN TAB                                                           */}
+      {/* ════════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'admin' && (
+        <>
+          <div className="stats-row" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+            <div className="stat-card" style={{ borderTop: '3px solid #2563eb' }}>
+              <span className="stat-label">Total Users</span>
+              <span className="stat-value" style={{ color: '#2563eb' }}>{users.length}</span>
+            </div>
+            <div className="stat-card" style={{ borderTop: '3px solid #16a34a' }}>
+              <span className="stat-label">Traders</span>
+              <span className="stat-value" style={{ color: '#16a34a' }}>{counts.ROLE_USER || 0}</span>
+            </div>
+            <div className="stat-card" style={{ borderTop: '3px solid #d97706' }}>
+              <span className="stat-label">Companies</span>
+              <span className="stat-value" style={{ color: '#d97706' }}>{counts.ROLE_COMPANY || 0}</span>
+            </div>
+            <div className="stat-card" style={{ borderTop: '3px solid #dc2626' }}>
+              <span className="stat-label">Admins</span>
+              <span className="stat-value" style={{ color: '#dc2626' }}>{counts.ROLE_ADMIN || 0}</span>
+            </div>
           </div>
-        </div>
-        <div className="admin-banner-right">
-          {healthStatus && (
-            <div className="admin-health-pill">
-              <span className={`live-dot ${healthUp ? 'live-dot-on' : 'live-dot-off'}`} />
-              Gateway {healthStatus}
+
+          {msg && (
+            <div className={`alert ${msg.type === 'success' ? 'alert-success' : 'alert-error'}`}
+                 style={{ margin: 0 }}>
+              {msg.text}
             </div>
           )}
-          <span className="admin-env-badge">PROTOTYPE</span>
-        </div>
-      </div>
 
-      {/* ── Platform stats ─────────────────────────────────────────── */}
-      <div className="stats-row">
-        <div className="stat-card">
-          <span className="stat-label">Total Users</span>
-          <span className="stat-value">{users.length}</span>
-        </div>
-        <div className="stat-card">
-          <span className="stat-label">Traders</span>
-          <span className="stat-value">{counts.ROLE_USER || 0}</span>
-        </div>
-        <div className="stat-card">
-          <span className="stat-label">Companies</span>
-          <span className="stat-value">{counts.ROLE_COMPANY || 0}</span>
-        </div>
-        <div className="stat-card">
-          <span className="stat-label">Admins</span>
-          <span className="stat-value">{counts.ROLE_ADMIN || 0}</span>
-        </div>
-      </div>
+          {/* Market Control */}
+          <div className="card">
+            <div className="card-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ color: 'var(--text-sec)' }}><ActivityIcon /></span>
+                <h2 className="card-title">Market Control</h2>
+              </div>
+              <button className="btn-ghost" onClick={loadAdmin}>Refresh</button>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 24, padding: '24px 24px 20px' }}>
+              <div style={{
+                width: 64, height: 64, borderRadius: 16, flexShrink: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28,
+                background: marketOpen === false ? 'var(--danger-bg)' : 'var(--success-bg)',
+                border: `2px solid ${marketOpen === false ? 'var(--danger-border)' : 'var(--success-border)'}`,
+              }}>
+                {marketOpen === false ? '🔴' : '🟢'}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{
+                  fontSize: 22, fontWeight: 800,
+                  color: marketOpen === false ? 'var(--danger)' : marketOpen === true ? 'var(--success)' : 'var(--text-muted)',
+                }}>
+                  {marketOpen === null ? 'Loading…' : marketOpen ? 'MARKET OPEN' : 'MARKET CLOSED'}
+                </div>
+                <div style={{ fontSize: 13, color: 'var(--text-sec)', marginTop: 4 }}>
+                  {marketOpen === true  && 'Trading is enabled. All users can place buy and sell orders.'}
+                  {marketOpen === false && 'Trading is halted. New orders are blocked until market reopens.'}
+                  {marketOpen === null  && 'Fetching current market status…'}
+                </div>
+              </div>
+              <button
+                style={{
+                  padding: '11px 28px', borderRadius: 8, fontWeight: 700, fontSize: 14,
+                  border: 'none', cursor: marketBusy || marketOpen === null ? 'not-allowed' : 'pointer',
+                  opacity: marketBusy || marketOpen === null ? 0.6 : 1, transition: 'opacity .15s',
+                  background: marketOpen ? 'var(--danger)' : 'var(--success)',
+                  color: '#fff', minWidth: 140,
+                }}
+                disabled={marketBusy || marketOpen === null}
+                onClick={toggleMarket}
+              >
+                {marketBusy ? 'Updating…' : marketOpen ? 'Close Market' : 'Open Market'}
+              </button>
+            </div>
+          </div>
 
-      {/* ── Market control ─────────────────────────────────────────── */}
-      <div className="card">
-        <div className="card-header">
-          <h2 className="card-title">Market Control</h2>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            {marketOpen !== null && (
-              <span className={`badge ${marketOpen ? 'badge-success' : 'badge-danger'}`}
-                    style={{ fontSize: 13, padding: '4px 12px' }}>
-                {marketOpen ? 'OPEN' : 'CLOSED'}
+          {/* System Health */}
+          {components.length > 0 && (
+            <div className="card">
+              <div className="card-header">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ color: 'var(--text-sec)' }}><ServerIcon /></span>
+                  <h2 className="card-title">System Health</h2>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span className={`badge ${healthUp ? 'badge-success' : 'badge-danger'}`}>
+                    <span className={`live-dot ${healthUp ? 'live-dot-on' : 'live-dot-off'}`} />
+                    {healthStatus}
+                  </span>
+                  <button className="btn-ghost" onClick={loadAdmin}>Refresh</button>
+                </div>
+              </div>
+              <div className="health-grid">
+                {components.map(([name, comp]) => {
+                  const up = comp.status === 'UP'
+                  return (
+                    <div key={name} className="health-item">
+                      <span className={`live-dot ${up ? 'live-dot-on' : 'live-dot-off'}`} />
+                      <span className="health-name">{name}</span>
+                      <span className={`badge ${up ? 'badge-success' : 'badge-danger'}`}
+                            style={{ fontSize: 11, padding: '2px 8px' }}>
+                        {comp.status}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* User Management */}
+          <div className="card">
+            <div className="card-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ color: 'var(--text-sec)' }}><UsersIcon /></span>
+                <h2 className="card-title">User Management</h2>
+                <span className="badge badge-info" style={{ marginLeft: 4 }}>{users.length}</span>
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input
+                  className="form-input"
+                  style={{ padding: '6px 10px', width: 220 }}
+                  placeholder="Search by name or role…"
+                  value={search}
+                  onChange={e => { setSearch(e.target.value); setMsg(null) }}
+                />
+                <button className="btn-ghost" onClick={loadAdmin}>Refresh</button>
+              </div>
+            </div>
+            <div className="table-scroll">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th style={{ width: 50 }}>#</th>
+                    <th>Username</th>
+                    <th>Role</th>
+                    <th>Change Role</th>
+                    <th style={{ width: 100 }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.length === 0 && (
+                    <tr><td colSpan={5} className="empty-row">No users found.</td></tr>
+                  )}
+                  {filtered.map(u => {
+                    const meta = ROLE_META[u.role] || ROLE_META.ROLE_USER
+                    const isMe = u.id === me?.userId
+                    return (
+                      <tr key={u.id}>
+                        <td className="text-muted" style={{ fontVariantNumeric: 'tabular-nums' }}>{u.id}</td>
+                        <td>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div style={{
+                              width: 30, height: 30, borderRadius: '50%',
+                              background: isMe ? '#eff6ff' : '#f1f5f9',
+                              border: isMe ? '2px solid #bfdbfe' : '2px solid var(--border)',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              fontSize: 12, fontWeight: 700,
+                              color: isMe ? 'var(--primary)' : 'var(--text-sec)',
+                              flexShrink: 0,
+                            }}>
+                              {u.username.charAt(0).toUpperCase()}
+                            </div>
+                            <span className="username-link" onClick={() => openUserDetail(u)}>
+                              <strong>{u.username}</strong>
+                            </span>
+                            {isMe && <span className="badge badge-info" style={{ fontSize: 10, padding: '1px 6px' }}>You</span>}
+                          </div>
+                        </td>
+                        <td><span className={`badge ${meta.cls}`}>{meta.label}</span></td>
+                        <td>
+                          {isMe ? (
+                            <span className="text-muted" style={{ fontSize: 12 }}>Cannot change own role</span>
+                          ) : (
+                            <select
+                              className="role-select"
+                              value={u.role}
+                              disabled={saving === u.id}
+                              onChange={e => changeRole(u.id, e.target.value)}
+                            >
+                              {ROLES.map(r => (
+                                <option key={r} value={r}>{ROLE_META[r].label}</option>
+                              ))}
+                            </select>
+                          )}
+                        </td>
+                        <td>
+                          {isMe ? (
+                            <span className="text-muted">—</span>
+                          ) : (
+                            <button
+                              className="btn-delete-sm"
+                              disabled={deleting === u.id}
+                              onClick={() => deleteUser(u.id, u.username)}
+                            >
+                              {deleting === u.id ? '…' : 'Delete'}
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════════ */}
+      {/* DASHBOARD TAB                                                       */}
+      {/* ════════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'dashboard' && (
+        <>
+          {/* Stats row */}
+          <div className="stats-row">
+            <div className="stat-card" style={{ borderTop: '3px solid #2563eb' }}>
+              <span className="stat-label">Listed Stocks</span>
+              <span className="stat-value" style={{ color: '#2563eb' }}>{stocks.length}</span>
+            </div>
+            <div className="stat-card" style={{ borderTop: '3px solid #16a34a' }}>
+              <span className="stat-label">Market Trades</span>
+              <span className="stat-value" style={{ color: '#16a34a' }}>{marketTrades.length}</span>
+            </div>
+            <div className="stat-card" style={{ borderTop: '3px solid #7c3aed' }}>
+              <span className="stat-label">Total Volume</span>
+              <span className="stat-value" style={{ color: '#7c3aed', fontSize: 18 }}>
+                {totalVolume > 0 ? fmt$(totalVolume) : '—'}
               </span>
-            )}
-            <button
-              className={marketOpen ? 'btn-delete-sm' : 'btn-primary'}
-              style={{ minWidth: 110 }}
-              disabled={marketBusy || marketOpen === null}
-              onClick={toggleMarket}
-            >
-              {marketBusy ? '…' : marketOpen ? 'Close Market' : 'Open Market'}
-            </button>
+            </div>
+            <div className={`stat-card ${marketOpen ? 'stat-card-live' : 'stat-card-offline'}`}>
+              <span className="stat-label">Market</span>
+              <span className="stat-value-sm">
+                <span className={`live-dot ${marketOpen ? 'live-dot-on' : 'live-dot-off'}`} />
+                {marketOpen === null ? '…' : marketOpen ? 'Open' : 'Closed'}
+              </span>
+            </div>
+            <div className={`stat-card ${wsConnected ? 'stat-card-live' : 'stat-card-offline'}`}>
+              <span className="stat-label">Live Feed</span>
+              <span className="stat-value-sm">
+                <span className={`live-dot ${wsConnected ? 'live-dot-on' : 'live-dot-off'}`} />
+                {wsConnected ? 'Connected' : 'Offline'}
+              </span>
+            </div>
           </div>
-        </div>
-        <p className="text-muted" style={{ padding: '0 0 8px 0', margin: 0, fontSize: 13 }}>
-          {marketOpen
-            ? 'Trading is currently enabled. Click "Close Market" to halt all new orders.'
-            : 'Trading is currently halted. Click "Open Market" to allow new orders.'}
-        </p>
-      </div>
 
-      {/* ── System health ──────────────────────────────────────────── */}
-      {components.length > 0 && (
-        <div className="card">
-          <div className="card-header">
-            <h2 className="card-title">System Health</h2>
-            <button className="btn-ghost" onClick={load}>Refresh</button>
+          {/* Market Prices + Recent Trades */}
+          <div className="dash-grid">
+
+            {/* Market Prices */}
+            <div className="card">
+              <div className="card-header">
+                <h2 className="card-title">Market Prices</h2>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span className="card-hint">Click row to view order book</span>
+                  <button className="btn-ghost" onClick={loadDashboard}>↺</button>
+                </div>
+              </div>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Ticker</th>
+                    <th className="text-right">Last Price</th>
+                    <th className="text-right">Last Trade</th>
+                    <th className="text-right">Trade Value</th>
+                    <th>Updated</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stocks.length === 0 && <tr><td colSpan={5} className="empty-row">Loading…</td></tr>}
+                  {stocks.map(s => {
+                    const dir      = priceDirs[s.ticker] || 'neutral'
+                    const arrow    = dir === 'up' ? '▲' : dir === 'down' ? '▼' : ''
+                    const priceCls = dir === 'up' ? 'price-up' : dir === 'down' ? 'price-down' : ''
+                    return (
+                      <tr key={s.ticker}
+                        className={`table-row-clickable ${bookTicker === s.ticker ? 'row-selected' : ''}`}
+                        onClick={() => loadOrderBook(s.ticker)}>
+                        <td><span className="ticker-badge">{s.ticker}</span></td>
+                        <td className={`text-right price-cell ${priceCls}`}>
+                          {arrow && <span className="price-arrow">{arrow}</span>}
+                          {fmt$(s.currentPrice)}
+                        </td>
+                        <td className="text-right text-muted">
+                          {s.lastTradePrice ? fmt$(s.lastTradePrice) : '—'}
+                        </td>
+                        <td className="text-right text-muted">
+                          {s.lastTradeValue ? fmt$(s.lastTradeValue) : '—'}
+                        </td>
+                        <td className="text-muted text-sm">{s.lastUpdatedAt || '—'}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Recent Market Trades */}
+            <div className="card">
+              <div className="card-header">
+                <h2 className="card-title">Recent Market Trades</h2>
+                <button className="btn-ghost" onClick={() =>
+                  orderApi.get('/market/trades').then(r => setMarketTrades(r.data)).catch(() => {})
+                }>↺</button>
+              </div>
+              <div className="table-scroll">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Ticker</th>
+                      <th className="text-right">Price</th>
+                      <th className="text-right">Qty</th>
+                      <th className="text-right">Value</th>
+                      <th>Time</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {marketTrades.length === 0 && (
+                      <tr><td colSpan={5} className="empty-row">No trades executed yet.</td></tr>
+                    )}
+                    {marketTrades.map(t => (
+                      <tr key={t.id}>
+                        <td><span className="ticker-badge">{t.ticker}</span></td>
+                        <td className="text-right font-med">{fmt$(t.price)}</td>
+                        <td className="text-right">{t.quantity.toLocaleString()}</td>
+                        <td className="text-right">{fmt$(t.value)}</td>
+                        <td className="text-muted text-sm">
+                          {new Date(t.executedAt).toLocaleTimeString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
-          <div className="health-grid">
-            {components.map(([name, comp]) => {
-              const up = comp.status === 'UP'
-              return (
-                <div key={name} className="health-item">
-                  <span className={`live-dot ${up ? 'live-dot-on' : 'live-dot-off'}`} />
-                  <span className="health-name">{name}</span>
-                  <span className={`health-status ${up ? 'health-up' : 'health-down'}`}>
-                    {comp.status}
+
+          {/* Order Book for selected ticker */}
+          {bookTicker && (
+            <div className="card" style={{ padding: 0 }}>
+              <div className="card-header" style={{ padding: '14px 16px' }}>
+                <div>
+                  <h2 className="card-title">Order Book — {bookTicker}</h2>
+                  <span className="card-hint" style={{ display: 'block', marginTop: 2 }}>
+                    Resting orders at each price level
                   </span>
                 </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* ── Alert banner ───────────────────────────────────────────── */}
-      {msg && (
-        <div className={`alert ${msg.type === 'success' ? 'alert-success' : 'alert-error'}`}
-             style={{ margin: 0 }}>
-          {msg.text}
-        </div>
-      )}
-
-      {/* ── User management ────────────────────────────────────────── */}
-      <div className="card">
-        <div className="card-header">
-          <h2 className="card-title">User Management</h2>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <input
-              className="form-input"
-              style={{ padding: '6px 10px', width: 200 }}
-              placeholder="Search by name or role…"
-              value={search}
-              onChange={e => { setSearch(e.target.value); setMsg(null) }}
-            />
-            <button className="btn-ghost" onClick={load}>Refresh</button>
-          </div>
-        </div>
-        <div className="table-scroll">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Username</th>
-                <th>Role</th>
-                <th>Change Role</th>
-                <th style={{ width: 90 }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0 && (
-                <tr><td colSpan={5} className="empty-row">No users found.</td></tr>
+                <button className="btn-ghost" onClick={() => loadOrderBook(bookTicker)}>↺</button>
+              </div>
+              {bookLoading ? (
+                <div className="book-empty">Loading…</div>
+              ) : !orderBook ? null : (
+                <div className="book-container">
+                  <div className="book-side">
+                    <div className="book-side-header book-asks-header">SELL — Asks</div>
+                    <div className="book-cols-header">
+                      <span>Price</span><span>Quantity</span><span>Orders</span>
+                    </div>
+                    {orderBook.asks.length === 0
+                      ? <div className="book-empty">No sell orders resting</div>
+                      : [...orderBook.asks].reverse().map((lvl, i) => {
+                          const maxQty = Math.max(...orderBook.asks.map(l => l.quantity), 1)
+                          return (
+                            <div key={i} className="book-row book-row-ask"
+                              style={{ '--bar-pct': `${Math.round(lvl.quantity / maxQty * 100)}%` }}>
+                              <span className="book-price">{fmt$(lvl.price)}</span>
+                              <span className="book-qty">{lvl.quantity.toLocaleString()}</span>
+                              <span className="book-orders">{lvl.orders}</span>
+                            </div>
+                          )
+                        })
+                    }
+                  </div>
+                  {orderBook.bids.length > 0 && orderBook.asks.length > 0 ? (
+                    <div className="book-spread">
+                      Spread: {fmt$(Number(orderBook.asks[0].price) - Number(orderBook.bids[0].price))}
+                      &nbsp;·&nbsp;
+                      Mid: {fmt$((Number(orderBook.asks[0].price) + Number(orderBook.bids[0].price)) / 2)}
+                    </div>
+                  ) : (
+                    <div className="book-spread" style={{ color: 'var(--text-muted)' }}>
+                      — no spread: book is one-sided —
+                    </div>
+                  )}
+                  <div className="book-side">
+                    <div className="book-side-header book-bids-header">BUY — Bids</div>
+                    <div className="book-cols-header">
+                      <span>Price</span><span>Quantity</span><span>Orders</span>
+                    </div>
+                    {orderBook.bids.length === 0
+                      ? <div className="book-empty">No buy orders resting</div>
+                      : orderBook.bids.map((lvl, i) => {
+                          const maxQty = Math.max(...orderBook.bids.map(l => l.quantity), 1)
+                          return (
+                            <div key={i} className="book-row book-row-bid"
+                              style={{ '--bar-pct': `${Math.round(lvl.quantity / maxQty * 100)}%` }}>
+                              <span className="book-price">{fmt$(lvl.price)}</span>
+                              <span className="book-qty">{lvl.quantity.toLocaleString()}</span>
+                              <span className="book-orders">{lvl.orders}</span>
+                            </div>
+                          )
+                        })
+                    }
+                  </div>
+                </div>
               )}
-              {filtered.map(u => {
-                const meta = ROLE_META[u.role] || ROLE_META.ROLE_USER
-                const isMe = u.id === me?.userId
-                return (
-                  <tr key={u.id}>
-                    <td className="text-muted">{u.id}</td>
-                    <td>
-                      <span className="username-link" onClick={() => openUserDetail(u)}>
-                        <strong>{u.username}</strong>
-                      </span>
-                      {isMe && <span className="you-badge"> (you)</span>}
-                    </td>
-                    <td><span className={`badge ${meta.cls}`}>{meta.label}</span></td>
-                    <td>
-                      {isMe ? (
-                        <span className="text-muted">Cannot change own role</span>
-                      ) : (
-                        <select
-                          className="role-select"
-                          value={u.role}
-                          disabled={saving === u.id}
-                          onChange={e => changeRole(u.id, e.target.value)}
-                        >
-                          {ROLES.map(r => (
-                            <option key={r} value={r}>{ROLE_META[r].label}</option>
-                          ))}
-                        </select>
-                      )}
-                    </td>
-                    <td>
-                      {isMe ? (
-                        <span className="text-muted">—</span>
-                      ) : (
-                        <button
-                          className="btn-delete-sm"
-                          disabled={deleting === u.id}
-                          onClick={() => deleteUser(u.id, u.username)}
-                        >
-                          {deleting === u.id ? '…' : 'Delete'}
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+            </div>
+          )}
 
-      {/* ── User detail modal ──────────────────────────────────────── */}
+          {/* Live Activity */}
+          <div className="card activity-card">
+            <div className="card-header">
+              <h2 className="card-title">Live Activity</h2>
+              <span className={`live-dot ${wsConnected ? 'live-dot-on' : 'live-dot-off'}`} />
+            </div>
+            <ul className="activity-list">
+              {activity.length === 0 && <li className="activity-empty">Waiting for events…</li>}
+              {activity.map((line, i) => <li key={i} className="activity-item">{line}</li>)}
+            </ul>
+          </div>
+        </>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════════ */}
+      {/* MARKET TAB                                                          */}
+      {/* ════════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'market' && (
+        <>
+          {/* Stats */}
+          <div className="stats-row" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+            <div className="stat-card" style={{ borderTop: '3px solid #2563eb' }}>
+              <span className="stat-label">Listed Stocks</span>
+              <span className="stat-value" style={{ color: '#2563eb' }}>{listings.length}</span>
+            </div>
+            <div className="stat-card" style={{ borderTop: '3px solid #16a34a' }}>
+              <span className="stat-label">IPO Active</span>
+              <span className="stat-value" style={{ color: '#16a34a' }}>{ipoActiveCount}</span>
+            </div>
+            <div className="stat-card" style={{ borderTop: '3px solid #6b7280' }}>
+              <span className="stat-label">IPO Closed</span>
+              <span className="stat-value" style={{ color: '#6b7280' }}>{listings.length - ipoActiveCount}</span>
+            </div>
+            <div className={`stat-card ${marketOpen ? 'stat-card-live' : 'stat-card-offline'}`}>
+              <span className="stat-label">Market</span>
+              <span className="stat-value-sm">
+                <span className={`live-dot ${marketOpen ? 'live-dot-on' : 'live-dot-off'}`} />
+                {marketOpen === null ? '…' : marketOpen ? 'Open' : 'Closed'}
+              </span>
+            </div>
+          </div>
+
+          {/* Listed Stocks */}
+          <div className="card">
+            <div className="card-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ color: 'var(--text-sec)' }}><MarketIcon /></span>
+                <h2 className="card-title">Listed Stocks</h2>
+                <span className="badge badge-info" style={{ marginLeft: 4 }}>{listings.length}</span>
+              </div>
+              <button className="btn-ghost" onClick={loadMarket}>Refresh</button>
+            </div>
+
+            {listings.length === 0 ? (
+              <div className="empty-state">
+                <div className="empty-state-icon">🏢</div>
+                <p className="empty-state-title">No stocks listed yet</p>
+                <p className="empty-state-sub">
+                  Company accounts can list stocks from their Company Dashboard.
+                </p>
+              </div>
+            ) : (
+              <div className="table-scroll">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Ticker</th>
+                      <th>Company</th>
+                      <th className="text-right">IPO Price</th>
+                      <th className="text-right">Total Shares</th>
+                      <th className="text-right">IPO Remaining</th>
+                      <th className="text-right">Sold</th>
+                      <th className="text-right">Market Price</th>
+                      <th className="text-right">Change</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {listings.map(l => {
+                      const mkt       = getPrice(l.ticker)
+                      const ipo       = getIpo(l.ticker)
+                      const chgPct    = mkt && mkt.changePct != null ? Number(mkt.changePct) : null
+                      const ipoActive = ipo && ipo.remainingShares > 0
+                      return (
+                        <tr key={l.ticker}>
+                          <td><span className="ticker-badge">{l.ticker}</span></td>
+                          <td className="font-med">{l.companyName}</td>
+                          <td className="text-right text-muted">{fmt$(l.initialPrice)}</td>
+                          <td className="text-right">{Number(l.totalShares).toLocaleString()}</td>
+                          <td className="text-right">
+                            {ipo
+                              ? <span className={ipo.remainingShares > 0 ? 'pnl-positive' : 'text-muted'}>
+                                  {ipo.remainingShares > 0
+                                    ? Number(ipo.remainingShares).toLocaleString()
+                                    : 'Sold out'}
+                                </span>
+                              : <span className="text-muted">—</span>}
+                          </td>
+                          <td className="text-right text-muted">
+                            {ipo ? Number(ipo.soldShares).toLocaleString() : '—'}
+                          </td>
+                          <td className="text-right font-med">
+                            {mkt
+                              ? fmt$(mkt.currentPrice)
+                              : <span className="text-muted">—</span>}
+                          </td>
+                          <td className={`text-right ${chgPct === null ? '' : chgPct >= 0 ? 'pnl-positive' : 'pnl-negative'}`}>
+                            {chgPct !== null
+                              ? `${chgPct >= 0 ? '+' : ''}${chgPct.toFixed(2)}%`
+                              : '—'}
+                          </td>
+                          <td>
+                            {ipoActive
+                              ? <span className="badge badge-success">IPO Active</span>
+                              : <span className="badge badge-neutral">Secondary</span>}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* IPO Allocation Detail */}
+          {ipoAllocations.length > 0 && (
+            <div className="card">
+              <div className="card-header">
+                <h2 className="card-title">IPO Allocation Summary</h2>
+                <button className="btn-ghost" onClick={loadMarket}>Refresh</button>
+              </div>
+              <div className="table-scroll">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Ticker</th>
+                      <th className="text-right">IPO Price</th>
+                      <th className="text-right">Total IPO Shares</th>
+                      <th className="text-right">Sold</th>
+                      <th className="text-right">Remaining</th>
+                      <th className="text-right">% Sold</th>
+                      <th>Phase</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ipoAllocations.map(a => {
+                      const pctSold = a.totalShares > 0
+                        ? Math.round((a.soldShares / a.totalShares) * 100) : 0
+                      return (
+                        <tr key={a.ticker}>
+                          <td><span className="ticker-badge">{a.ticker}</span></td>
+                          <td className="text-right">{fmt$(a.ipoPrice)}</td>
+                          <td className="text-right">{Number(a.totalShares).toLocaleString()}</td>
+                          <td className="text-right">{Number(a.soldShares).toLocaleString()}</td>
+                          <td className="text-right">
+                            <span className={a.remainingShares > 0 ? 'pnl-positive' : 'text-muted'}>
+                              {a.remainingShares > 0
+                                ? Number(a.remainingShares).toLocaleString()
+                                : 'Sold out'}
+                            </span>
+                          </td>
+                          <td className="text-right">
+                            <div className="fill-cell">
+                              <span>{pctSold}%</span>
+                              <div className="fill-bar">
+                                <div className="fill-bar-inner" style={{ width: `${pctSold}%` }} />
+                              </div>
+                            </div>
+                          </td>
+                          <td>
+                            {a.remainingShares > 0
+                              ? <span className="badge badge-success">IPO Active</span>
+                              : <span className="badge badge-neutral">Secondary</span>}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── User Detail Modal (accessible from Admin tab) ──────────────────── */}
       {selectedUser && (
         <div className="modal-overlay" onClick={closeDetail}>
           <div className="modal" onClick={e => e.stopPropagation()}>
 
-            {/* Header */}
             <div className="modal-header">
               <div className="modal-avatar">
                 {selectedUser.username.charAt(0).toUpperCase()}
@@ -323,13 +894,12 @@ export default function AdminPage() {
                   <span className={`badge ${(ROLE_META[selectedUser.role] || ROLE_META.ROLE_USER).cls}`}>
                     {(ROLE_META[selectedUser.role] || ROLE_META.ROLE_USER).label}
                   </span>
-                  <span style={{ marginLeft: 8 }}>User ID: {selectedUser.id}</span>
+                  <span style={{ marginLeft: 8 }}>ID: {selectedUser.id}</span>
                 </div>
               </div>
               <button className="modal-close" onClick={closeDetail}>&#x2715;</button>
             </div>
 
-            {/* Stats */}
             <div className="modal-stats">
               <div className="modal-stat">
                 <span className="modal-stat-label">Wallet Balance</span>
@@ -354,7 +924,6 @@ export default function AdminPage() {
               </div>
             </div>
 
-            {/* Tabs */}
             <div className="modal-tabs">
               <button
                 className={`modal-tab ${detailTab === 'portfolio' ? 'modal-tab-active' : ''}`}
@@ -366,7 +935,6 @@ export default function AdminPage() {
               >Order History</button>
             </div>
 
-            {/* Body */}
             <div className="modal-body">
               {detailLoading && <div className="modal-loading">Loading…</div>}
 
