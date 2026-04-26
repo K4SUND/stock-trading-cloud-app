@@ -858,6 +858,11 @@ input, select { font-family: inherit; font-size: 14px; }
   font-size: 14px;
   color: var(--text, #1e293b);
 }
+.notif-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
 .notif-mark-all {
   background: none;
   border: none;
@@ -867,6 +872,15 @@ input, select { font-family: inherit; font-size: 14px; }
   padding: 0;
 }
 .notif-mark-all:hover { text-decoration: underline; }
+.notif-clear-all {
+  background: none;
+  border: none;
+  font-size: 12px;
+  color: var(--danger, #dc2626);
+  cursor: pointer;
+  padding: 0;
+}
+.notif-clear-all:hover { text-decoration: underline; }
 .notif-list {
   max-height: 360px;
   overflow-y: auto;
@@ -890,7 +904,27 @@ input, select { font-family: inherit; font-size: 14px; }
 .notif-item:hover { background: var(--surface2, #f8fafc); }
 .notif-unread { background: #f0f4ff; }
 .notif-unread:hover { background: #e8edfd; }
-.notif-item-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+.notif-item-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .3px;
+}
+.notif-type-order   { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+.notif-type-trade   { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+.notif-type-cancel  { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+.notif-type-ipo     { background: #f8fafc; color: #0f172a; border: 1px solid #cbd5e1; }
+.notif-type-listed  { background: #ecfeff; color: #0e7490; border: 1px solid #a5f3fc; }
+.notif-type-issued  { background: #f5f3ff; color: #6d28d9; border: 1px solid #ddd6fe; }
+.notif-type-company { background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; }
+.notif-type-default { background: #f8fafc; color: #334155; border: 1px solid #e2e8f0; }
 .notif-item-body { flex: 1; min-width: 0; }
 .notif-item-title {
   font-size: 13px;

@@ -27,7 +27,11 @@ export default function NotificationBell() {
   }
 
   useEffect(() => {
-    if (!token) return
+    if (!token) {
+      setNotifications([])
+      dismissedBroadcasts.current = new Set()
+      return
+    }
     fetchNotifications()
     const interval = setInterval(fetchNotifications, 5000)
     return () => clearInterval(interval)
@@ -56,6 +60,14 @@ export default function NotificationBell() {
     } catch {}
   }
 
+  async function handleClearAll() {
+    try {
+      await notificationApi.delete('/clear-all', { headers: authHeaders(token) })
+      dismissedBroadcasts.current = new Set()
+      setNotifications([])
+    } catch {}
+  }
+
   async function handleMarkRead(id) {
     try {
       await notificationApi.patch(`/${id}/read`, {}, { headers: authHeaders(token) })
@@ -79,15 +91,15 @@ export default function NotificationBell() {
     return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
   }
 
-  const TYPE_ICON = {
-    ORDER_PLACED:     '📋',
-    TRADE_EXECUTED:   '✅',
-    ORDER_CANCELLED:  '❌',
-    IPO_PURCHASED:    '🏦',
-    STOCK_LISTED:     '🚀',
-    SHARES_ISSUED:    '📈',
-    COMPANY_IPO_SALE: '💰',
-    COMPANY_TRADE:    '🔄',
+  const TYPE_BADGE = {
+    ORDER_PLACED:     { label: 'OR', className: 'notif-type-order' },
+    TRADE_EXECUTED:   { label: 'TR', className: 'notif-type-trade' },
+    ORDER_CANCELLED:  { label: 'CN', className: 'notif-type-cancel' },
+    IPO_PURCHASED:    { label: 'IP', className: 'notif-type-ipo' },
+    STOCK_LISTED:     { label: 'LS', className: 'notif-type-listed' },
+    SHARES_ISSUED:    { label: 'IS', className: 'notif-type-issued' },
+    COMPANY_IPO_SALE: { label: 'CS', className: 'notif-type-company' },
+    COMPANY_TRADE:    { label: 'CT', className: 'notif-type-company' },
   }
 
   return (
@@ -110,18 +122,27 @@ export default function NotificationBell() {
         <div className="notif-dropdown">
           <div className="notif-header">
             <span className="notif-title">Notifications</span>
-            {(unread > 0 || notifications.some(n => n.broadcast)) && (
-              <button className="notif-mark-all" onClick={handleMarkAllRead}>
-                Mark all read
-              </button>
-            )}
+            <div className="notif-actions">
+              {(unread > 0 || notifications.some(n => n.broadcast)) && (
+                <button className="notif-mark-all" onClick={handleMarkAllRead}>
+                  Mark all read
+                </button>
+              )}
+              {notifications.length > 0 && (
+                <button className="notif-clear-all" onClick={handleClearAll}>
+                  Clear all
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="notif-list">
             {notifications.length === 0 ? (
               <div className="notif-empty">No notifications yet</div>
             ) : (
-              notifications.map(n => (
+              notifications.map(n => {
+                const typeBadge = TYPE_BADGE[n.type] || { label: 'NT', className: 'notif-type-default' }
+                return (
                 <div
                   key={n.id}
                   className={`notif-item ${
@@ -129,7 +150,7 @@ export default function NotificationBell() {
                   }`}
                   onClick={() => !n.broadcast && !n.read && handleMarkRead(n.id)}
                 >
-                  <div className="notif-item-icon">{TYPE_ICON[n.type] || '🔔'}</div>
+                  <div className={`notif-item-icon ${typeBadge.className}`}>{typeBadge.label}</div>
                   <div className="notif-item-body">
                     <div className="notif-item-title">
                       {n.broadcast && <span className="notif-broadcast-tag">Announcement</span>}
@@ -145,7 +166,8 @@ export default function NotificationBell() {
                     title="Dismiss"
                   >×</button>
                 </div>
-              ))
+                )
+              })
             )}
           </div>
         </div>

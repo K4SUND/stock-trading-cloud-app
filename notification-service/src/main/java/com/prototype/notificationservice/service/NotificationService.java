@@ -187,4 +187,14 @@ public class NotificationService {
             }
         });
     }
+
+    public void clearAll(Long userId) {
+        // Personal notifications are removed for this user.
+        repository.deleteByUserId(userId);
+
+        // Broadcast notifications remain global but are dismissed for this user.
+        List<Notification> broadcasts = repository.findByBroadcastTrueAndDismissedByUserIdsNotContaining(userId);
+        broadcasts.forEach(n -> n.getDismissedByUserIds().add(userId));
+        repository.saveAll(broadcasts);
+    }
 }
