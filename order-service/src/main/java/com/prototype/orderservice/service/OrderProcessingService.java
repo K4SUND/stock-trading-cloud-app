@@ -2,6 +2,7 @@ package com.prototype.orderservice.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.prototype.orderservice.dto.*;
+import com.prototype.orderservice.events.IpoPurchasedEvent;
 import com.prototype.orderservice.events.OrderCancelledEvent;
 import com.prototype.orderservice.events.OrderPlacedEvent;
 import com.prototype.orderservice.events.TradeExecutedEvent;
@@ -160,6 +161,9 @@ public class OrderProcessingService {
         purchase.setPurchasedAt(Instant.now());
         ipoPurchaseRepository.save(purchase);
 
+        kafkaPublisher.publishIpoPurchased(new IpoPurchasedEvent(
+            userId, upper, quantity, alloc.getIpoPrice(), totalCost));
+
         log.info("IPO purchase userId={} ticker={} qty={} price={} totalCost={}",
             userId, upper, quantity, alloc.getIpoPrice(), totalCost);
 
@@ -194,7 +198,7 @@ public class OrderProcessingService {
         orderRepository.save(order);
 
         kafkaPublisher.publishOrderCancelled(new OrderCancelledEvent(
-            orderId, order.getStockTicker(), order.remainingQty(), "USER_CANCELLED"));
+            orderId, userId, order.getStockTicker(), order.remainingQty(), "USER_CANCELLED"));
 
         log.info("Order cancelled id={} userId={}", orderId, userId);
     }

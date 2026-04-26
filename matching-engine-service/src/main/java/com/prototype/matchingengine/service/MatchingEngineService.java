@@ -115,7 +115,7 @@ public class MatchingEngineService {
         }
         if (remaining > 0 && isMarket) {
             kafkaPublisher.publishCancelled(new OrderCancelledEvent(
-                event.orderId(), event.ticker(), remaining, "MARKET_NO_LIQUIDITY"));
+                event.orderId(), event.userId(), event.ticker(), remaining, "MARKET_NO_LIQUIDITY"));
         }
     }
 
@@ -158,7 +158,7 @@ public class MatchingEngineService {
         }
         if (remaining > 0 && isMarket) {
             kafkaPublisher.publishCancelled(new OrderCancelledEvent(
-                event.orderId(), event.ticker(), remaining, "MARKET_NO_LIQUIDITY"));
+                event.orderId(), event.userId(), event.ticker(), remaining, "MARKET_NO_LIQUIDITY"));
         }
     }
 

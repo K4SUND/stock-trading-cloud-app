@@ -1,4 +1,4 @@
-package com.prototype.orderservice.events;
+package com.prototype.notificationservice.events;
 
 public record OrderCancelledEvent(
     Long orderId,

@@ -1,6 +1,7 @@
 import React from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import NotificationBell from './NotificationBell'
 
 const ROLE_LABELS = {
   ROLE_USER:    { label: 'Trader',  cls: 'role-user'    },
@@ -59,6 +60,7 @@ export default function Navbar() {
         <div className="navbar-right">
           {isLoggedIn ? (
             <>
+              <NotificationBell />
               <div className="nav-user">
                 <div className="nav-avatar">{user.username.charAt(0).toUpperCase()}</div>
                 <div className="nav-user-info">

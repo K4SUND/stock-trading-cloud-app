@@ -4,6 +4,7 @@ package com.prototype.matchingengine.events;
 // Also published by matching-engine when a MARKET order can't be fully filled.
 public record OrderCancelledEvent(
     Long   orderId,
+    Long   userId,
     String ticker,
     int    remainingQty,
     String reason       // "USER_CANCELLED" | "MARKET_NO_LIQUIDITY"

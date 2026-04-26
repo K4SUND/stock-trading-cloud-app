@@ -40,6 +40,13 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./postgres-init:/docker-entrypoint-initdb.d
 
+  mongodb:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+
   user-service:
     build: ../user-service
     depends_on:
@@ -105,12 +112,14 @@ services:
     build: ../company-service
     depends_on:
       - postgres
+      - kafka
       - price-service
       - order-service
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/companydb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       APP_JWT_SECRET: change-this-secret-key-change-this-secret-key
       PRICE_SERVICE_URL: http://price-service:8084
       ORDER_SERVICE_URL: http://order-service:8082
@@ -128,6 +137,18 @@ services:
     ports:
       - "8086:8086"
 
+  notification-service:
+    build: ../notification-service
+    depends_on:
+      - mongodb
+      - kafka
+    environment:
+      SPRING_DATA_MONGODB_URI: mongodb://mongodb:27017/notificationsdb
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      APP_JWT_SECRET: change-this-secret-key-change-this-secret-key
+    ports:
+      - "8087:8087"
+
   gateway-service:
     build: ../gateway-service
     depends_on:
@@ -137,13 +158,15 @@ services:
       - price-service
       - company-service
       - matching-engine-service
+      - notification-service
     environment:
-      USER_SERVICE_URL:            http://user-service:8081
-      ORDER_SERVICE_URL:           http://order-service:8082
-      PAYMENT_SERVICE_URL:         http://payment-service:8083
-      PRICE_SERVICE_URL:           http://price-service:8084
-      COMPANY_SERVICE_URL:         http://company-service:8085
-      MATCHING_ENGINE_SERVICE_URL: http://matching-engine-service:8086
+      USER_SERVICE_URL:             http://user-service:8081
+      ORDER_SERVICE_URL:            http://order-service:8082
+      PAYMENT_SERVICE_URL:          http://payment-service:8083
+      PRICE_SERVICE_URL:            http://price-service:8084
+      COMPANY_SERVICE_URL:          http://company-service:8085
+      MATCHING_ENGINE_SERVICE_URL:  http://matching-engine-service:8086
+      NOTIFICATION_SERVICE_URL:     http://notification-service:8087
       APP_JWT_SECRET: change-this-secret-key-change-this-secret-key
     ports:
       - "8080:8080"
@@ -157,3 +180,4 @@ services:
 
 volumes:
   postgres_data:
+  mongodb_data:
