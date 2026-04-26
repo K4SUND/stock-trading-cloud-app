@@ -278,17 +278,25 @@ jobs:
       - name: Set up kubectl
         uses: azure/setup-kubectl@v4
 
-      - name: Configure kubeconfig
-        run: |
-          mkdir -p ~/.kube
-          echo "${{ secrets.KUBE_CONFIG_STAGING }}" | base64 -d > ~/.kube/config
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Resolve staging gateway IP
+      - name: Configure kubectl
         run: |
-          GATEWAY_IP=$(kubectl get svc gateway-service -n staging \
-            -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-          echo "GATEWAY_URL=http://${GATEWAY_IP}:8080" >> $GITHUB_ENV
-          echo "Gateway LoadBalancer IP: ${GATEWAY_IP}"
+          CLUSTER=$(aws ssm get-parameter --name "/stock-trading/cluster-name" --query "Parameter.Value" --output text)
+          aws eks update-kubeconfig --name $CLUSTER --region ${{ secrets.AWS_REGION }}
+
+      - name: Resolve staging gateway hostname
+        run: |
+          # AWS ELB gives a hostname, not an IP
+          GATEWAY_HOST=$(kubectl get svc gateway-service -n staging \
+            -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+          echo "GATEWAY_URL=http://${GATEWAY_HOST}:8080" >> $GITHUB_ENV
+          echo "Gateway LoadBalancer: ${GATEWAY_HOST}"
 
       - name: Health check — gateway (/actuator/health)
         run: |
@@ -357,22 +365,17 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Fetch RDS values from SSM
+      - name: Fetch cluster info and RDS values from SSM
         run: |
-          RDS_HOST=$(aws ssm get-parameter \
-            --name "/stock-trading/production/rds-host" \
-            --query "Parameter.Value" --output text)
-          DB_PASSWORD=$(aws ssm get-parameter \
-            --name "/stock-trading/production/rds-password" \
-            --with-decryption \
-            --query "Parameter.Value" --output text)
+          CLUSTER=$(aws ssm get-parameter --name "/stock-trading/cluster-name" --query "Parameter.Value" --output text)
+          RDS_HOST=$(aws ssm get-parameter --name "/stock-trading/rds-host" --query "Parameter.Value" --output text)
+          DB_PASSWORD=$(aws ssm get-parameter --name "/stock-trading/rds-password" --with-decryption --query "Parameter.Value" --output text)
+          echo "CLUSTER=${CLUSTER}" >> $GITHUB_ENV
           echo "RDS_HOST=${RDS_HOST}" >> $GITHUB_ENV
           echo "DB_PASSWORD=${DB_PASSWORD}" >> $GITHUB_ENV
 
-      - name: Configure kubeconfig
-        run: |
-          mkdir -p ~/.kube
-          echo "${{ secrets.KUBE_CONFIG_PRODUCTION }}" | base64 -d > ~/.kube/config
+      - name: Configure kubectl
+        run: aws eks update-kubeconfig --name ${{ env.CLUSTER }} --region ${{ secrets.AWS_REGION }}
 
       - name: Apply namespaces
         run: kubectl apply -f k8s/namespaces.yaml
@@ -421,9 +424,10 @@ jobs:
 
       - name: Post-deploy production health check
         run: |
-          GATEWAY_IP=$(kubectl get svc gateway-service -n production \
-            -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-          curl -sf "http://${GATEWAY_IP}:8080/actuator/health"
+          # AWS ELB gives a hostname, not an IP
+          GATEWAY_HOST=$(kubectl get svc gateway-service -n production \
+            -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+          curl -sf "http://${GATEWAY_HOST}:8080/actuator/health"
           echo "Production deployment complete"
 
       - name: Deploy monitoring stack
