@@ -481,7 +481,7 @@ input, select { font-family: inherit; font-size: 14px; }
 }
 .wallet-method-tabs {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 8px;
   padding: 14px 20px 0;
 }

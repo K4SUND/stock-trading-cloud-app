@@ -9,6 +9,7 @@ import java.math.BigDecimal;
 
 public record CardTopupRequest(
     @NotNull @DecimalMin("1.00") BigDecimal amount,
+    @NotBlank String password,
     @NotBlank @Size(min = 2, max = 80) String cardHolderName,
     @NotBlank String cardNumber,
     @NotBlank String expiryMonth,

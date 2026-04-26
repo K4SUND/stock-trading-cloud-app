@@ -58,6 +58,7 @@ services:
       SPRING_DATASOURCE_PASSWORD: postgres
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       APP_JWT_SECRET: change-this-secret-key-change-this-secret-key
+      APP_INTERNAL_SERVICE_SECRET: dev-internal-service-secret
       ADMIN_USERNAME: admin
       ADMIN_PASSWORD: Admin@StockTrade2024
     ports:
@@ -90,6 +91,8 @@ services:
       SPRING_DATASOURCE_PASSWORD: postgres
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       APP_JWT_SECRET: change-this-secret-key-change-this-secret-key
+      APP_INTERNAL_SERVICE_SECRET: dev-internal-service-secret
+      USER_SERVICE_URL: http://user-service:8081
     ports:
       - "8083:8083"
 

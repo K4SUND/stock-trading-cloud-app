@@ -39,6 +39,14 @@ spec:
                 secretKeyRef:
                   name: app-secrets
                   key: APP_JWT_SECRET
+            - name: APP_INTERNAL_SERVICE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: APP_INTERNAL_SERVICE_SECRET
+                  optional: true
+            - name: USER_SERVICE_URL
+              value: http://user-service:8081
             - name: PRICE_SERVICE_URL
               value: http://price-service:8084
           readinessProbe:

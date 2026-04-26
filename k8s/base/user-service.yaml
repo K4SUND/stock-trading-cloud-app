@@ -39,6 +39,12 @@ spec:
                 secretKeyRef:
                   name: app-secrets
                   key: APP_JWT_SECRET
+            - name: APP_INTERNAL_SERVICE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: APP_INTERNAL_SERVICE_SECRET
+                  optional: true
             - name: ADMIN_USERNAME
               valueFrom:
                 secretKeyRef:

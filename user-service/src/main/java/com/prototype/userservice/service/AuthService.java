@@ -57,4 +57,11 @@ public class AuthService {
         log.info("Login username={} userId={} role={}", user.getUsername(), user.getId(), user.getRole());
         return new AuthResponse(user.getId(), user.getUsername(), token, user.getRole());
     }
+
+    public boolean verifyPassword(Long userId, String rawPassword) {
+        return userRepository.findById(userId)
+            .filter(UserAccount::isActive)
+            .map(user -> passwordEncoder.matches(rawPassword, user.getPasswordHash()))
+            .orElse(false);
+    }
 }

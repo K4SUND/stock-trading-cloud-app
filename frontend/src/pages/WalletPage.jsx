@@ -17,17 +17,22 @@ export default function WalletPage() {
   const [transactions, setTransactions] = useState([])
 
   const [manualAmount, setManualAmount] = useState('1000')
+  const [manualPassword, setManualPassword] = useState('')
   const [cardAmount, setCardAmount] = useState('500')
+  const [cardPassword, setCardPassword] = useState('')
   const [cardHolderName, setCardHolderName] = useState('')
   const [cardNumber, setCardNumber] = useState('4242 4242 4242 4242')
   const [expiryMonth, setExpiryMonth] = useState('12')
   const [expiryYear, setExpiryYear] = useState(String(new Date().getFullYear() + 1))
   const [cvv, setCvv] = useState('123')
+  const [withdrawAmount, setWithdrawAmount] = useState('250')
+  const [withdrawPassword, setWithdrawPassword] = useState('')
 
   const [activeMethod, setActiveMethod] = useState('card')
 
   const [manualLoading, setManualLoading] = useState(false)
   const [cardLoading, setCardLoading] = useState(false)
+  const [withdrawLoading, setWithdrawLoading] = useState(false)
   const [msg, setMsg] = useState(null)
 
   async function loadWalletData() {
@@ -48,15 +53,21 @@ export default function WalletPage() {
       setMsg({ type: 'error', text: 'Enter a valid positive amount.' })
       return
     }
+    if (!manualPassword.trim()) {
+      setMsg({ type: 'error', text: 'Enter your account password to confirm this deposit.' })
+      return
+    }
     setManualLoading(true)
     setMsg(null)
     try {
-      await paymentApi.post('/wallet/topup', { amount: value }, { headers })
+      await paymentApi.post('/wallet/topup', { amount: value, password: manualPassword }, { headers })
       setMsg({ type: 'success', text: `Successfully added $${value.toFixed(2)} to your wallet.` })
       setManualAmount('1000')
+      setManualPassword('')
       loadWalletData()
-    } catch {
-      setMsg({ type: 'error', text: 'Top-up failed. Please try again.' })
+    } catch (err) {
+      const errorText = err.response?.data?.error || 'Top-up failed. Please try again.'
+      setMsg({ type: 'error', text: String(errorText) })
     } finally {
       setManualLoading(false)
     }
@@ -69,12 +80,17 @@ export default function WalletPage() {
       setMsg({ type: 'error', text: 'Enter a valid top-up amount for card payment.' })
       return
     }
+    if (!cardPassword.trim()) {
+      setMsg({ type: 'error', text: 'Enter your account password to confirm this card deposit.' })
+      return
+    }
 
     setCardLoading(true)
     setMsg(null)
     try {
-      const res = await paymentApi.post('/wallet/topup/card/sandbox', {
+      const res = await paymentApi.post('/wallet/topup/card', {
         amount: value,
+        password: cardPassword,
         cardHolderName,
         cardNumber,
         expiryMonth,
@@ -89,12 +105,41 @@ export default function WalletPage() {
       setCardAmount('500')
       setCardHolderName('')
       setCvv('')
+      setCardPassword('')
       loadWalletData()
     } catch (err) {
       const errorText = err.response?.data?.error || 'Card payment failed in sandbox. Try a different test card.'
       setMsg({ type: 'error', text: String(errorText) })
     } finally {
       setCardLoading(false)
+    }
+  }
+
+  async function handleWithdraw(e) {
+    e.preventDefault()
+    const value = Number(withdrawAmount)
+    if (!value || value <= 0) {
+      setMsg({ type: 'error', text: 'Enter a valid positive withdrawal amount.' })
+      return
+    }
+    if (!withdrawPassword.trim()) {
+      setMsg({ type: 'error', text: 'Enter your account password to confirm this withdrawal.' })
+      return
+    }
+
+    setWithdrawLoading(true)
+    setMsg(null)
+    try {
+      await paymentApi.post('/wallet/withdraw', { amount: value, password: withdrawPassword }, { headers })
+      setMsg({ type: 'success', text: `Withdrawal successful. ${fmt$(value)} was deducted from your wallet.` })
+      setWithdrawAmount('250')
+      setWithdrawPassword('')
+      loadWalletData()
+    } catch (err) {
+      const errorText = err.response?.data?.error || 'Withdraw failed. Please try again.'
+      setMsg({ type: 'error', text: String(errorText) })
+    } finally {
+      setWithdrawLoading(false)
     }
   }
 
@@ -140,7 +185,7 @@ export default function WalletPage() {
           <div className="card wallet-payment-card">
             <div className="card-header">
               <h2 className="card-title">Add Funds</h2>
-              <span className="card-hint">Sandbox payment gateway</span>
+              <span className="card-hint">Card and wallet operations with password confirmation</span>
             </div>
 
             <div className="wallet-method-tabs">
@@ -149,7 +194,7 @@ export default function WalletPage() {
                 className={`wallet-method-tab ${activeMethod === 'card' ? 'wallet-method-tab-active' : ''}`}
                 onClick={() => setActiveMethod('card')}
               >
-                Card Payment (Sandbox)
+                Card Payment
               </button>
               <button
                 type="button"
@@ -157,6 +202,13 @@ export default function WalletPage() {
                 onClick={() => setActiveMethod('manual')}
               >
                 Manual Credit
+              </button>
+              <button
+                type="button"
+                className={`wallet-method-tab ${activeMethod === 'withdraw' ? 'wallet-method-tab-active' : ''}`}
+                onClick={() => setActiveMethod('withdraw')}
+              >
+                Withdraw
               </button>
             </div>
 
@@ -186,6 +238,18 @@ export default function WalletPage() {
                     step="0.01"
                     value={cardAmount}
                     onChange={e => setCardAmount(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Confirm Password</label>
+                  <input
+                    className="form-input"
+                    type="password"
+                    value={cardPassword}
+                    onChange={e => setCardPassword(e.target.value)}
+                    placeholder="Enter account password"
                     required
                   />
                 </div>
@@ -252,10 +316,10 @@ export default function WalletPage() {
                 </div>
 
                 <button type="submit" className="btn-primary btn-full" disabled={cardLoading}>
-                  {cardLoading ? 'Processing Card Payment…' : `Pay ${fmt$(cardAmount)} via Sandbox`}
+                  {cardLoading ? 'Processing Card Payment…' : `Pay ${fmt$(cardAmount)} via Card`}
                 </button>
               </form>
-            ) : (
+            ) : activeMethod === 'manual' ? (
               <form className="wallet-payment-form" onSubmit={handleManualTopup}>
                 <div className="form-group">
                   <label className="form-label">Amount (USD)</label>
@@ -267,6 +331,18 @@ export default function WalletPage() {
                     placeholder="0.00"
                     value={manualAmount}
                     onChange={e => setManualAmount(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Confirm Password</label>
+                  <input
+                    className="form-input"
+                    type="password"
+                    value={manualPassword}
+                    onChange={e => setManualPassword(e.target.value)}
+                    placeholder="Enter account password"
                     required
                   />
                 </div>
@@ -286,6 +362,38 @@ export default function WalletPage() {
 
                 <button type="submit" className="btn-primary btn-full" disabled={manualLoading}>
                   {manualLoading ? 'Processing…' : `Add ${fmt$(manualAmount)}`}
+                </button>
+              </form>
+            ) : (
+              <form className="wallet-payment-form" onSubmit={handleWithdraw}>
+                <div className="form-group">
+                  <label className="form-label">Withdraw Amount (USD)</label>
+                  <input
+                    className="form-input form-input-lg"
+                    type="number"
+                    min="1"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={withdrawAmount}
+                    onChange={e => setWithdrawAmount(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Confirm Password</label>
+                  <input
+                    className="form-input"
+                    type="password"
+                    value={withdrawPassword}
+                    onChange={e => setWithdrawPassword(e.target.value)}
+                    placeholder="Enter account password"
+                    required
+                  />
+                </div>
+
+                <button type="submit" className="btn-sell btn-full" disabled={withdrawLoading}>
+                  {withdrawLoading ? 'Processing Withdrawal…' : `Withdraw ${fmt$(withdrawAmount)}`}
                 </button>
               </form>
             )}
@@ -333,7 +441,7 @@ export default function WalletPage() {
       </div>
 
       <div className="info-box wallet-info-box">
-        <strong>Sandbox Gateway Notes:</strong> Use test card 4242 4242 4242 4242 for approval, 4000 0000 0000 0002 for insufficient funds, and 4000 0000 0000 9995 for security decline.
+        <strong>Security Notes:</strong> Deposits and withdrawals now require password confirmation. For sandbox card testing, use 4242 4242 4242 4242 for approval, 4000 0000 0000 0002 for insufficient funds, and 4000 0000 0000 9995 for security decline.
       </div>
     </div>
   )

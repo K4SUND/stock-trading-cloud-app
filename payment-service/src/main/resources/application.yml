@@ -22,6 +22,10 @@ spring:
 app:
   jwt:
     secret: ${APP_JWT_SECRET:change-this-secret-key-change-this-secret-key}
+  internal:
+    service-secret: ${APP_INTERNAL_SERVICE_SECRET:dev-internal-service-secret}
+user-service:
+  url: ${USER_SERVICE_URL:http://localhost:8081}
 management:
   endpoints:
     web:

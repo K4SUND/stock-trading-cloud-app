@@ -6,7 +6,7 @@ import jakarta.validation.constraints.NotNull;
 
 import java.math.BigDecimal;
 
-public record TopupRequest(
-	@NotNull @DecimalMin("0.01") BigDecimal amount,
-	@NotBlank String password
+public record WithdrawRequest(
+    @NotNull @DecimalMin("0.01") BigDecimal amount,
+    @NotBlank String password
 ) {}
