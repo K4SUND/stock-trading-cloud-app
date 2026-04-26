@@ -45,7 +45,7 @@ input, select { font-family: inherit; font-size: 14px; }
   background: var(--nav-bg);
   position: sticky;
   top: 0;
-  z-index: 100;
+  z-index: 300;
   box-shadow: 0 1px 4px rgba(0,0,0,.3);
 }
 .navbar-inner {
@@ -843,7 +843,7 @@ input, select { font-family: inherit; font-size: 14px; }
   border: 1px solid var(--border, #e2e8f0);
   border-radius: 12px;
   box-shadow: 0 8px 24px rgba(0,0,0,.12);
-  z-index: 1000;
+  z-index: 2000;
   overflow: hidden;
 }
 .notif-header {
