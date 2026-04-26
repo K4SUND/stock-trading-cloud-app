@@ -1,13 +1,20 @@
 package com.prototype.paymentservice.controller;
 
+import com.prototype.paymentservice.dto.CardTopupRequest;
+import com.prototype.paymentservice.dto.CardTopupResponse;
 import com.prototype.paymentservice.dto.DeductRequest;
 import com.prototype.paymentservice.dto.TopupRequest;
 import com.prototype.paymentservice.dto.WalletResponse;
+import com.prototype.paymentservice.dto.WalletTransactionResponse;
 import com.prototype.paymentservice.service.WalletService;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/payments")
@@ -28,6 +35,27 @@ public class PaymentController {
     public ResponseEntity<WalletResponse> wallet(Authentication authentication) {
         Long userId = (Long) authentication.getPrincipal();
         return ResponseEntity.ok(walletService.getWallet(userId));
+    }
+
+    @PostMapping("/wallet/topup/card/sandbox")
+    public ResponseEntity<?> topupBySandboxCard(
+        @Valid @RequestBody CardTopupRequest request,
+        Authentication authentication
+    ) {
+        Long userId = (Long) authentication.getPrincipal();
+        try {
+            CardTopupResponse response = walletService.topupBySandboxCard(userId, request);
+            return ResponseEntity.ok(response);
+        } catch (IllegalStateException ex) {
+            return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED)
+                .body(Map.of("error", ex.getMessage()));
+        }
+    }
+
+    @GetMapping("/wallet/transactions")
+    public ResponseEntity<List<WalletTransactionResponse>> transactions(Authentication authentication) {
+        Long userId = (Long) authentication.getPrincipal();
+        return ResponseEntity.ok(walletService.getRecentTransactions(userId));
     }
 
     @GetMapping("/admin/users/{userId}/wallet")
