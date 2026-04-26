@@ -1,6 +1,8 @@
 package com.prototype.companyservice.service;
 
 import com.prototype.companyservice.dto.*;
+import com.prototype.companyservice.events.SharesIssuedEvent;
+import com.prototype.companyservice.events.StockListedEvent;
 import com.prototype.companyservice.model.CompanyProfile;
 import com.prototype.companyservice.model.StockListing;
 import com.prototype.companyservice.repository.CompanyProfileRepository;
@@ -23,16 +25,19 @@ public class CompanyService {
     private final CompanyProfileRepository profileRepo;
     private final StockListingRepository   stockRepo;
     private final RestTemplate             restTemplate;
+    private final KafkaEventPublisher      kafkaPublisher;
     private final String                   priceServiceUrl;
     private final String                   orderServiceUrl;
 
     public CompanyService(CompanyProfileRepository profileRepo, StockListingRepository stockRepo,
                           RestTemplate restTemplate,
+                          KafkaEventPublisher kafkaPublisher,
                           @Value("${price-service.url}") String priceServiceUrl,
                           @Value("${order-service.url}") String orderServiceUrl) {
         this.profileRepo     = profileRepo;
         this.stockRepo       = stockRepo;
         this.restTemplate    = restTemplate;
+        this.kafkaPublisher  = kafkaPublisher;
         this.priceServiceUrl = priceServiceUrl;
         this.orderServiceUrl = orderServiceUrl;
     }
@@ -83,6 +88,10 @@ public class CompanyService {
         // Seed IPO allocation in order-service (no matching engine; direct purchase)
         issueSharesInOrderBook(userId, listing.getTicker(), request.totalShares(), request.initialPrice());
 
+        kafkaPublisher.publishStockListed(new StockListedEvent(
+            userId, profile.getCompanyName(), listing.getTicker(),
+            request.totalShares(), request.initialPrice()));
+
         log.info("Listed stock ticker={} company={} price={} shares={}",
             listing.getTicker(), profile.getCompanyName(), request.initialPrice(), request.totalShares());
         return StockListingResponse.from(listing);
@@ -112,6 +121,8 @@ public class CompanyService {
         long delta = request.totalShares() - previousShares;
         if (delta > 0) {
             issueSharesInOrderBook(userId, ticker, delta, request.initialPrice());
+            kafkaPublisher.publishSharesIssued(new SharesIssuedEvent(
+                userId, profile.getCompanyName(), ticker.toUpperCase(), delta, request.initialPrice()));
             log.info("Additional shares issued ticker={} delta={}", ticker, delta);
         }
         log.info("Updated stock ticker={} newPrice={} totalShares={}", ticker, request.initialPrice(), request.totalShares());

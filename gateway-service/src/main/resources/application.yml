@@ -62,6 +62,12 @@ spring:
           predicates:
             - Path=/api/book/**
 
+        # ── notification-service — ROLE_USER+ ────────────────────────────
+        - id: notification-service
+          uri: ${NOTIFICATION_SERVICE_URL:http://localhost:8087}
+          predicates:
+            - Path=/api/notifications/**
+
         # ── WebSocket live feed — public ──────────────────────────────────
         - id: price-websocket
           uri: ${PRICE_SERVICE_URL:http://localhost:8084}

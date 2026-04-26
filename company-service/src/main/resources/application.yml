@@ -1,5 +1,6 @@
 server:
   port: 8085
+
 spring:
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/companydb}
@@ -9,13 +10,22 @@ spring:
     hibernate:
       ddl-auto: update
     open-in-view: false
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
 app:
   jwt:
     secret: ${APP_JWT_SECRET:change-this-secret-key-change-this-secret-key}
+
 price-service:
   url: ${PRICE_SERVICE_URL:http://localhost:8084}
+
 order-service:
   url: ${ORDER_SERVICE_URL:http://localhost:8082}
+
 management:
   endpoints:
     web:
@@ -24,6 +34,7 @@ management:
   endpoint:
     health:
       show-details: always
+
 logging:
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} %-5level [%thread] %logger - %msg%n"
