@@ -243,17 +243,31 @@ export default function AdminPage() {
   }
 
   async function openUserDetail(user) {
+    const isCompany = user.role === 'ROLE_COMPANY'
     setSelectedUser(user); setUserDetail(null)
-    setDetailLoading(true); setDetailTab('portfolio')
-    const [walletRes, portfolioRes, ordersRes] = await Promise.allSettled([
+    setDetailLoading(true); setDetailTab(isCompany ? 'listings' : 'portfolio')
+
+    const fetches = [
       paymentApi.get(`/admin/users/${user.id}/wallet`,  { headers }),
       orderApi.get(`/admin/users/${user.id}/portfolio`, { headers }),
       orderApi.get(`/admin/users/${user.id}/orders`,    { headers }),
-    ])
+    ]
+    if (isCompany) fetches.push(companyApi.get('/public/all'))
+
+    const [walletRes, portfolioRes, ordersRes, allCompaniesRes] = await Promise.allSettled(fetches)
+
+    let companyProfile = null
+    let companyStocks  = []
+    if (isCompany && allCompaniesRes?.status === 'fulfilled') {
+      companyProfile = allCompaniesRes.value.data.find(c => c.userId === user.id) || null
+    }
+
     setUserDetail({
-      wallet:    walletRes.status    === 'fulfilled' ? walletRes.value.data    : null,
-      portfolio: portfolioRes.status === 'fulfilled' ? portfolioRes.value.data : [],
-      orders:    ordersRes.status    === 'fulfilled' ? ordersRes.value.data    : [],
+      wallet:        walletRes.status    === 'fulfilled' ? walletRes.value.data    : null,
+      portfolio:     portfolioRes.status === 'fulfilled' ? portfolioRes.value.data : [],
+      orders:        ordersRes.status    === 'fulfilled' ? ordersRes.value.data    : [],
+      companyProfile,
+      companyStocks,
     })
     setDetailLoading(false)
   }
@@ -275,6 +289,12 @@ export default function AdminPage() {
 
   const getPrice = (ticker) => stocks.find(s => s.ticker === ticker)
   const getIpo   = (ticker) => ipoAllocations.find(a => a.ticker === ticker)
+
+  const selectedUserMeta = selectedUser ? (ROLE_META[selectedUser.role] || ROLE_META.ROLE_USER) : null
+  const isCompanyUser    = selectedUser?.role === 'ROLE_COMPANY'
+  const companyStocksForModal = isCompanyUser && userDetail?.companyProfile
+    ? listings.filter(l => l.companyName === userDetail.companyProfile.companyName)
+    : []
   const ipoActiveCount = listings.filter(l => {
     const ipo = getIpo(l.ticker)
     return ipo && ipo.remainingShares > 0
@@ -909,63 +929,152 @@ export default function AdminPage() {
       {/* ── User Detail Modal (accessible from Admin tab) ──────────────────── */}
       {selectedUser && (
         <div className="modal-overlay" onClick={closeDetail}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
+          <div className="modal" style={isCompanyUser ? { maxWidth: 820 } : {}} onClick={e => e.stopPropagation()}>
 
+            {/* ── Header ── */}
             <div className="modal-header">
-              <div className="modal-avatar">
-                {selectedUser.username.charAt(0).toUpperCase()}
+              <div className="modal-avatar" style={isCompanyUser ? {
+                background: '#fef3c7', border: '2px solid #fcd34d', color: '#b45309',
+              } : {}}>
+                {isCompanyUser && userDetail?.companyProfile
+                  ? userDetail.companyProfile.companyName.charAt(0).toUpperCase()
+                  : selectedUser.username.charAt(0).toUpperCase()}
               </div>
               <div className="modal-user-info">
-                <div className="modal-username">{selectedUser.username}</div>
+                <div className="modal-username">
+                  {isCompanyUser && userDetail?.companyProfile
+                    ? userDetail.companyProfile.companyName
+                    : selectedUser.username}
+                </div>
                 <div className="modal-user-sub">
-                  <span className={`badge ${(ROLE_META[selectedUser.role] || ROLE_META.ROLE_USER).cls}`}>
-                    {(ROLE_META[selectedUser.role] || ROLE_META.ROLE_USER).label}
-                  </span>
+                  <span className={`badge ${selectedUserMeta.cls}`}>{selectedUserMeta.label}</span>
+                  {isCompanyUser && userDetail?.companyProfile && (
+                    <span style={{ marginLeft: 8, color: 'var(--text-sec)', fontSize: 12 }}>
+                      @{selectedUser.username}
+                    </span>
+                  )}
                   <span style={{ marginLeft: 8 }}>ID: {selectedUser.id}</span>
                 </div>
               </div>
               <button className="modal-close" onClick={closeDetail}>&#x2715;</button>
             </div>
 
-            <div className="modal-stats">
+            {/* ── Company profile info ── */}
+            {isCompanyUser && !detailLoading && userDetail?.companyProfile && (
+              <div className="company-profile-section">
+                {userDetail.companyProfile.description && (
+                  <p className="company-description">{userDetail.companyProfile.description}</p>
+                )}
+                {(userDetail.companyProfile.contactEmail || userDetail.companyProfile.website) && (
+                  <div className="company-contact-row">
+                    {userDetail.companyProfile.contactEmail && (
+                      <div className="company-contact-item">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <rect x="2" y="4" width="20" height="16" rx="2"/><polyline points="2,4 12,13 22,4"/>
+                        </svg>
+                        {userDetail.companyProfile.contactEmail}
+                      </div>
+                    )}
+                    {userDetail.companyProfile.website && (
+                      <div className="company-contact-item">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/>
+                          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                        </svg>
+                        {userDetail.companyProfile.website}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+            {isCompanyUser && !detailLoading && !userDetail?.companyProfile && (
+              <div className="company-profile-empty">No company profile set up yet.</div>
+            )}
+
+            {/* ── Stats ── */}
+            <div className="modal-stats" style={isCompanyUser ? { gridTemplateColumns: 'repeat(4, 1fr)' } : {}}>
               <div className="modal-stat">
                 <span className="modal-stat-label">Wallet Balance</span>
                 <span className="modal-stat-value">
-                  {detailLoading ? '…' :
-                    userDetail?.wallet != null
-                      ? `$${Number(userDetail.wallet.balance).toFixed(2)}`
-                      : '—'}
+                  {detailLoading ? '…' : userDetail?.wallet != null ? fmt$(userDetail.wallet.balance) : '—'}
                 </span>
               </div>
-              <div className="modal-stat">
-                <span className="modal-stat-label">Holdings</span>
-                <span className="modal-stat-value">
-                  {detailLoading ? '…' : (userDetail?.portfolio?.length ?? '—')}
-                </span>
-              </div>
-              <div className="modal-stat">
-                <span className="modal-stat-label">Total Orders</span>
-                <span className="modal-stat-value">
-                  {detailLoading ? '…' : (userDetail?.orders?.length ?? '—')}
-                </span>
-              </div>
+              {isCompanyUser ? (
+                <>
+                  <div className="modal-stat">
+                    <span className="modal-stat-label">Listed Stocks</span>
+                    <span className="modal-stat-value" style={{ color: '#d97706' }}>
+                      {detailLoading ? '…' : companyStocksForModal.length}
+                    </span>
+                  </div>
+                  <div className="modal-stat">
+                    <span className="modal-stat-label">Total Shares Issued</span>
+                    <span className="modal-stat-value">
+                      {detailLoading ? '…' :
+                        companyStocksForModal.length > 0
+                          ? companyStocksForModal.reduce((s, st) => s + Number(st.totalShares), 0).toLocaleString()
+                          : '—'}
+                    </span>
+                  </div>
+                  <div className="modal-stat">
+                    <span className="modal-stat-label">Orders Placed</span>
+                    <span className="modal-stat-value">
+                      {detailLoading ? '…' : (userDetail?.orders?.length ?? '—')}
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="modal-stat">
+                    <span className="modal-stat-label">Holdings</span>
+                    <span className="modal-stat-value">
+                      {detailLoading ? '…' : (userDetail?.portfolio?.length ?? '—')}
+                    </span>
+                  </div>
+                  <div className="modal-stat">
+                    <span className="modal-stat-label">Total Orders</span>
+                    <span className="modal-stat-value">
+                      {detailLoading ? '…' : (userDetail?.orders?.length ?? '—')}
+                    </span>
+                  </div>
+                </>
+              )}
             </div>
 
+            {/* ── Tabs ── */}
             <div className="modal-tabs">
-              <button
-                className={`modal-tab ${detailTab === 'portfolio' ? 'modal-tab-active' : ''}`}
-                onClick={() => setDetailTab('portfolio')}
-              >Portfolio</button>
-              <button
-                className={`modal-tab ${detailTab === 'orders' ? 'modal-tab-active' : ''}`}
-                onClick={() => setDetailTab('orders')}
-              >Order History</button>
+              {isCompanyUser ? (
+                <>
+                  <button
+                    className={`modal-tab ${detailTab === 'listings' ? 'modal-tab-active' : ''}`}
+                    onClick={() => setDetailTab('listings')}
+                  >Stock Listings</button>
+                  <button
+                    className={`modal-tab ${detailTab === 'orders' ? 'modal-tab-active' : ''}`}
+                    onClick={() => setDetailTab('orders')}
+                  >Order History</button>
+                </>
+              ) : (
+                <>
+                  <button
+                    className={`modal-tab ${detailTab === 'portfolio' ? 'modal-tab-active' : ''}`}
+                    onClick={() => setDetailTab('portfolio')}
+                  >Portfolio</button>
+                  <button
+                    className={`modal-tab ${detailTab === 'orders' ? 'modal-tab-active' : ''}`}
+                    onClick={() => setDetailTab('orders')}
+                  >Order History</button>
+                </>
+              )}
             </div>
 
+            {/* ── Body ── */}
             <div className="modal-body">
               {detailLoading && <div className="modal-loading">Loading…</div>}
 
-              {!detailLoading && detailTab === 'portfolio' && (
+              {/* Trader: Portfolio */}
+              {!detailLoading && !isCompanyUser && detailTab === 'portfolio' && (
                 userDetail?.portfolio?.length === 0
                   ? <div className="modal-empty">No portfolio holdings.</div>
                   : (
@@ -976,26 +1085,109 @@ export default function AdminPage() {
                             <th>Ticker</th>
                             <th className="text-right">Qty</th>
                             <th className="text-right">Avg Cost</th>
+                            <th className="text-right">Market Price</th>
                             <th className="text-right">Est. Value</th>
+                            <th className="text-right">P&amp;L</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {userDetail?.portfolio?.map(p => (
-                            <tr key={p.stockTicker}>
-                              <td><span className="ticker-badge">{p.stockTicker}</span></td>
-                              <td className="text-right">{p.quantity}</td>
-                              <td className="text-right price-cell">${Number(p.avgCostBasis).toFixed(2)}</td>
-                              <td className="text-right price-cell">
-                                ${(p.quantity * Number(p.avgCostBasis)).toFixed(2)}
-                              </td>
-                            </tr>
-                          ))}
+                          {userDetail?.portfolio?.map(p => {
+                            const mkt    = getPrice(p.stockTicker)
+                            const mktPx  = mkt ? Number(mkt.currentPrice) : null
+                            const avgCost = Number(p.avgCostBasis)
+                            const estVal = mktPx != null ? p.quantity * mktPx : p.quantity * avgCost
+                            const pnl    = mktPx != null ? p.quantity * (mktPx - avgCost) : null
+                            return (
+                              <tr key={p.stockTicker}>
+                                <td><span className="ticker-badge">{p.stockTicker}</span></td>
+                                <td className="text-right">{p.quantity.toLocaleString()}</td>
+                                <td className="text-right text-muted">{fmt$(avgCost)}</td>
+                                <td className="text-right font-med">
+                                  {mktPx != null ? fmt$(mktPx) : <span className="text-muted">—</span>}
+                                </td>
+                                <td className="text-right price-cell">{fmt$(estVal)}</td>
+                                <td className={`text-right ${pnl === null ? '' : pnl >= 0 ? 'pnl-positive' : 'pnl-negative'}`}>
+                                  {pnl !== null ? `${pnl >= 0 ? '+' : ''}${fmt$(pnl)}` : '—'}
+                                </td>
+                              </tr>
+                            )
+                          })}
                         </tbody>
                       </table>
                     </div>
                   )
               )}
 
+              {/* Company: Stock Listings */}
+              {!detailLoading && isCompanyUser && detailTab === 'listings' && (
+                companyStocksForModal.length === 0
+                  ? <div className="modal-empty">No stocks listed yet.</div>
+                  : (
+                    <div className="table-scroll">
+                      <table className="data-table">
+                        <thead>
+                          <tr>
+                            <th>Ticker</th>
+                            <th className="text-right">Initial Price</th>
+                            <th className="text-right">Total Shares</th>
+                            <th className="text-right">Market Price</th>
+                            <th className="text-right">Change</th>
+                            <th className="text-right">IPO Remaining</th>
+                            <th className="text-right">Sold</th>
+                            <th>Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {companyStocksForModal.map(s => {
+                            const mkt      = getPrice(s.ticker)
+                            const ipo      = getIpo(s.ticker)
+                            const chgPct   = mkt?.changePct != null ? Number(mkt.changePct) : null
+                            const ipoActive = ipo && ipo.remainingShares > 0
+                            const pctSold  = ipo && ipo.totalShares > 0
+                              ? Math.round((ipo.soldShares / ipo.totalShares) * 100)
+                              : null
+                            return (
+                              <tr key={s.ticker}>
+                                <td><span className="ticker-badge">{s.ticker}</span></td>
+                                <td className="text-right text-muted">{fmt$(s.initialPrice)}</td>
+                                <td className="text-right">{Number(s.totalShares).toLocaleString()}</td>
+                                <td className="text-right font-med">
+                                  {mkt ? fmt$(mkt.currentPrice) : <span className="text-muted">—</span>}
+                                </td>
+                                <td className={`text-right ${chgPct === null ? '' : chgPct >= 0 ? 'pnl-positive' : 'pnl-negative'}`}>
+                                  {chgPct !== null ? `${chgPct >= 0 ? '+' : ''}${chgPct.toFixed(2)}%` : '—'}
+                                </td>
+                                <td className="text-right">
+                                  {ipo
+                                    ? <span className={ipo.remainingShares > 0 ? 'pnl-positive' : 'text-muted'}>
+                                        {ipo.remainingShares > 0
+                                          ? Number(ipo.remainingShares).toLocaleString()
+                                          : 'Sold out'}
+                                      </span>
+                                    : <span className="text-muted">—</span>}
+                                </td>
+                                <td className="text-right text-muted">
+                                  {ipo
+                                    ? `${Number(ipo.soldShares).toLocaleString()}${pctSold !== null ? ` (${pctSold}%)` : ''}`
+                                    : '—'}
+                                </td>
+                                <td>
+                                  {ipoActive
+                                    ? <span className="badge badge-success">IPO Active</span>
+                                    : ipo
+                                      ? <span className="badge badge-neutral">Secondary</span>
+                                      : <span className="badge badge-neutral">Listed</span>}
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )
+              )}
+
+              {/* Orders (shared — trader and company) */}
               {!detailLoading && detailTab === 'orders' && (
                 userDetail?.orders?.length === 0
                   ? <div className="modal-empty">No orders found.</div>
@@ -1027,9 +1219,9 @@ export default function AdminPage() {
                                 <td className="text-right">{o.quantity}</td>
                                 <td className="text-right price-cell">
                                   {o.avgFillPrice != null
-                                    ? `$${Number(o.avgFillPrice).toFixed(2)}`
+                                    ? fmt$(o.avgFillPrice)
                                     : o.limitPrice != null
-                                      ? `$${Number(o.limitPrice).toFixed(2)}`
+                                      ? fmt$(o.limitPrice)
                                       : 'MKT'}
                                 </td>
                                 <td><span className={`badge ${statusCls}`}>{o.status}</span></td>
