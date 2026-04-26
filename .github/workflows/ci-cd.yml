@@ -259,11 +259,46 @@ jobs:
       - name: Wait for db-init Job to complete
         run: kubectl wait --for=condition=complete job/db-init -n staging --timeout=120s
 
-      - name: Wait for infrastructure (Kafka + MongoDB ready before services roll)
+      - name: Wait for infrastructure (Zookeeper + Kafka + MongoDB)
         run: |
-          kubectl rollout status statefulset/zookeeper -n staging --timeout=180s
-          kubectl rollout status statefulset/kafka      -n staging --timeout=300s
-          kubectl rollout status statefulset/mongodb    -n staging --timeout=120s
+          set -e
+          
+          echo "=== Current pods before waiting ==="
+          kubectl get pods -n staging -o wide
+          kubectl get statefulsets -n staging
+          
+          echo "=== Waiting for Zookeeper ==="
+          if ! kubectl rollout status statefulset/zookeeper -n staging --timeout=240s; then
+            echo "=== ZOOKEEPER FAILED ==="
+            kubectl get pods -n staging -o wide
+            kubectl describe pod zookeeper-0 -n staging || true
+            kubectl logs zookeeper-0 -n staging --tail=200 || true
+            kubectl get events -n staging --sort-by='.lastTimestamp' | tail -80
+            exit 1
+          fi
+          
+          echo "=== Waiting for Kafka ==="
+          if ! kubectl rollout status statefulset/kafka -n staging --timeout=600s; then
+            echo "=== KAFKA FAILED ==="
+            kubectl get pods -n staging -o wide
+            kubectl describe pod kafka-0 -n staging || true
+            kubectl logs kafka-0 -n staging --tail=300 || true
+            kubectl get events -n staging --sort-by='.lastTimestamp' | tail -100
+            exit 1
+          fi
+          
+          echo "=== Waiting for MongoDB ==="
+          if ! kubectl rollout status statefulset/mongodb -n staging --timeout=240s; then
+            echo "=== MONGODB FAILED ==="
+            kubectl get pods -n staging -o wide
+            kubectl describe pod mongodb-0 -n staging || true
+            kubectl logs mongodb-0 -n staging --tail=200 || true
+            kubectl get events -n staging --sort-by='.lastTimestamp' | tail -80
+            exit 1
+          fi
+          
+          echo "=== Infrastructure pods ready ==="
+          kubectl get pods -n staging -o wide
 
       - name: Wait for rollouts — batch 1 (data + core services)
         run: |
