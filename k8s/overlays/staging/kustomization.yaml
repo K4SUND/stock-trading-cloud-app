@@ -55,5 +55,5 @@ patches:
         path: /spec/strategy
         value:
           type: Recreate
-      target:
+    target:
       kind: Deployment
