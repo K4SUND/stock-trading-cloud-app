@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { Client } from '@stomp/stompjs'
 import SockJS from 'sockjs-client'
 import { authHeaders, bookApi, orderApi, paymentApi, priceApi } from '../api'
@@ -31,6 +31,7 @@ function fmtTime(ms) {
 
 export default function DashboardPage() {
   const { token } = useAuth()
+  const navigate = useNavigate()
   const headers = authHeaders(token)
 
   const [stocks, setStocks]             = useState([])
@@ -135,6 +136,10 @@ export default function DashboardPage() {
       stockTicker: ticker,
       limitPrice:  stock ? Number(stock.currentPrice).toFixed(2) : f.limitPrice,
     }))
+  }
+
+  function openTickerHistory(ticker) {
+    navigate(`/portfolio/${encodeURIComponent(ticker)}`)
   }
 
   function showMsg(msg) {
@@ -613,7 +618,18 @@ export default function DashboardPage() {
                   {portfolioRows.map(p => {
                     const pnlCls = p.pnl === null ? '' : p.pnl >= 0 ? 'pnl-positive' : 'pnl-negative'
                     return (
-                      <tr key={p.stockTicker}>
+                      <tr key={p.stockTicker}
+                        className="table-row-clickable"
+                        role="button"
+                        tabIndex={0}
+                        title={`View ${p.stockTicker} transaction history`}
+                        onClick={() => openTickerHistory(p.stockTicker)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault()
+                            openTickerHistory(p.stockTicker)
+                          }
+                        }}>
                         <td><span className="ticker-badge">{p.stockTicker}</span></td>
                         <td className="text-right">{p.quantity.toLocaleString()}</td>
                         <td className="text-right text-muted">
@@ -631,14 +647,18 @@ export default function DashboardPage() {
                         </td>
                         <td>
                           <button className="btn-sell-sm"
-                            onClick={() => setTradeForm(f => ({
-                              ...f,
-                              type:        'SELL',
-                              stockTicker: p.stockTicker,
-                              limitPrice:  p.currentPrice != null ? p.currentPrice.toFixed(2) : '',
-                              orderMode:   'LIMIT',
-                              quantity:    1,
-                            }))}>
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setTradeForm(f => ({
+                                ...f,
+                                type:        'SELL',
+                                stockTicker: p.stockTicker,
+                                limitPrice:  p.currentPrice != null ? p.currentPrice.toFixed(2) : '',
+                                orderMode:   'LIMIT',
+                                quantity:    1,
+                              }))
+                            }}
+                          >
                             Sell
                           </button>
                         </td>
