@@ -419,7 +419,7 @@ jobs:
         run: |
           for svc in user-service order-service payment-service price-service company-service gateway-service matching-engine-service frontend; do
             echo "Waiting for $svc..."
-            kubectl rollout status deployment/$svc -n production --timeout=300s
+            kubectl rollout status deployment/$svc -n production --timeout=600s
           done
 
       - name: Post-deploy production health check
