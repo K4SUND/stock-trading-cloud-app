@@ -50,6 +50,9 @@ public class AuthService {
         if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
             throw new IllegalArgumentException("Invalid credentials");
         }
+        if (!user.isActive()) {
+            throw new IllegalArgumentException("Your account has been deactivated. Please contact an administrator.");
+        }
         String token = jwtService.generateToken(user.getId(), user.getUsername(), user.getRole());
         log.info("Login username={} userId={} role={}", user.getUsername(), user.getId(), user.getRole());
         return new AuthResponse(user.getId(), user.getUsername(), token, user.getRole());

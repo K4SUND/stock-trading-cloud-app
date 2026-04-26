@@ -82,6 +82,7 @@ export default function AdminPage() {
   const [users,         setUsers]         = useState([])
   const [health,        setHealth]        = useState(null)
   const [search,        setSearch]        = useState('')
+  const [roleFilter,    setRoleFilter]    = useState('')
   const [msg,           setMsg]           = useState(null)
   const [saving,        setSaving]        = useState(null)
   const [deleting,      setDeleting]      = useState(null)
@@ -204,14 +205,15 @@ export default function AdminPage() {
   }
 
   // ── Admin tab handlers ─────────────────────────────────────────────────────
-  async function changeRole(userId, newRole) {
+  async function toggleStatus(userId, currentActive) {
     setSaving(userId); setMsg(null)
     try {
-      await userApi.patch(`/admin/users/${userId}/role`, { role: newRole }, { headers })
-      setUsers(prev => prev.map(u => u.id === userId ? { ...u, role: newRole } : u))
-      setMsg({ type: 'success', text: 'Role updated successfully.' })
-    } catch {
-      setMsg({ type: 'error', text: 'Failed to update role.' })
+      await userApi.patch(`/admin/users/${userId}/status`, {}, { headers })
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, active: !currentActive } : u))
+      setMsg({ type: 'success', text: currentActive ? 'User has been deactivated.' : 'User has been activated.' })
+    } catch (err) {
+      const detail = err?.response?.data?.error || 'Failed to update status.'
+      setMsg({ type: 'error', text: detail })
     } finally { setSaving(null) }
   }
 
@@ -262,10 +264,11 @@ export default function AdminPage() {
   const counts = ROLES.reduce((acc, r) => ({
     ...acc, [r]: users.filter(u => u.role === r).length
   }), {})
-  const filtered = users.filter(u =>
-    u.username.toLowerCase().includes(search.toLowerCase()) ||
-    u.role.toLowerCase().includes(search.toLowerCase())
-  )
+  const filtered = users.filter(u => {
+    const matchSearch = u.username.toLowerCase().includes(search.toLowerCase())
+    const matchRole = !roleFilter || u.role === roleFilter
+    return matchSearch && matchRole
+  })
   const healthStatus = health?.status ?? null
   const healthUp     = healthStatus === 'UP'
   const components   = health?.components ? Object.entries(health.components) : []
@@ -405,35 +408,46 @@ export default function AdminPage() {
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <input
                   className="form-input"
-                  style={{ padding: '6px 10px', width: 220 }}
-                  placeholder="Search by name or role…"
+                  style={{ padding: '6px 10px', width: 200 }}
+                  placeholder="Search by username…"
                   value={search}
                   onChange={e => { setSearch(e.target.value); setMsg(null) }}
                 />
+                <select
+                  className="role-select"
+                  value={roleFilter}
+                  onChange={e => { setRoleFilter(e.target.value); setMsg(null) }}
+                  style={{ padding: '6px 10px' }}
+                >
+                  <option value="">All Roles</option>
+                  {ROLES.map(r => (
+                    <option key={r} value={r}>{ROLE_META[r].label}</option>
+                  ))}
+                </select>
                 <button className="btn-ghost" onClick={loadAdmin}>Refresh</button>
               </div>
             </div>
             <div className="table-scroll">
-              <table className="data-table">
+              <table className="data-table" style={{ tableLayout: 'fixed' }}>
                 <thead>
                   <tr>
-                    <th style={{ width: 50 }}>#</th>
-                    <th>Username</th>
-                    <th>Role</th>
-                    <th>Change Role</th>
-                    <th style={{ width: 100 }}>Actions</th>
+                    <th style={{ width: 48 }}>#</th>
+                    <th style={{ width: '25%' }}>Username</th>
+                    <th style={{ width: '20%' }}>Role</th>
+                    <th style={{ width: '20%' }}>Status</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.length === 0 && (
                     <tr><td colSpan={5} className="empty-row">No users found.</td></tr>
                   )}
-                  {filtered.map(u => {
+                  {filtered.map((u, idx) => {
                     const meta = ROLE_META[u.role] || ROLE_META.ROLE_USER
                     const isMe = u.id === me?.userId
                     return (
                       <tr key={u.id}>
-                        <td className="text-muted" style={{ fontVariantNumeric: 'tabular-nums' }}>{u.id}</td>
+                        <td className="text-muted" style={{ fontVariantNumeric: 'tabular-nums' }}>{idx + 1}</td>
                         <td>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <div style={{
@@ -455,32 +469,45 @@ export default function AdminPage() {
                         </td>
                         <td><span className={`badge ${meta.cls}`}>{meta.label}</span></td>
                         <td>
-                          {isMe ? (
-                            <span className="text-muted" style={{ fontSize: 12 }}>Cannot change own role</span>
+                          {u.active !== false ? (
+                            <span className="badge badge-success" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                              <span className="live-dot live-dot-on" />
+                              Active
+                            </span>
                           ) : (
-                            <select
-                              className="role-select"
-                              value={u.role}
-                              disabled={saving === u.id}
-                              onChange={e => changeRole(u.id, e.target.value)}
-                            >
-                              {ROLES.map(r => (
-                                <option key={r} value={r}>{ROLE_META[r].label}</option>
-                              ))}
-                            </select>
+                            <span className="badge badge-danger" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                              <span className="live-dot live-dot-off" />
+                              Deactivated
+                            </span>
                           )}
                         </td>
-                        <td>
+                        <td style={{ whiteSpace: 'nowrap' }}>
                           {isMe ? (
                             <span className="text-muted">—</span>
                           ) : (
-                            <button
-                              className="btn-delete-sm"
-                              disabled={deleting === u.id}
-                              onClick={() => deleteUser(u.id, u.username)}
-                            >
-                              {deleting === u.id ? '…' : 'Delete'}
-                            </button>
+                            <div style={{ display: 'flex', gap: 8 }}>
+                              <button
+                                style={{
+                                  padding: '5px 12px', borderRadius: 6, fontWeight: 600, fontSize: 12,
+                                  border: 'none', cursor: saving === u.id ? 'not-allowed' : 'pointer',
+                                  opacity: saving === u.id ? 0.6 : 1, minWidth: 84,
+                                  background: u.active !== false ? 'var(--danger-bg, #fee2e2)' : 'var(--success-bg, #dcfce7)',
+                                  color: u.active !== false ? 'var(--danger, #dc2626)' : 'var(--success, #16a34a)',
+                                }}
+                                disabled={saving === u.id}
+                                onClick={() => toggleStatus(u.id, u.active !== false)}
+                              >
+                                {saving === u.id ? '…' : u.active !== false ? 'Deactivate' : 'Activate'}
+                              </button>
+                              <button
+                                className="btn-delete-sm"
+                                style={{ minWidth: 60 }}
+                                disabled={deleting === u.id}
+                                onClick={() => deleteUser(u.id, u.username)}
+                              >
+                                {deleting === u.id ? '…' : 'Delete'}
+                              </button>
+                            </div>
                           )}
                         </td>
                       </tr>

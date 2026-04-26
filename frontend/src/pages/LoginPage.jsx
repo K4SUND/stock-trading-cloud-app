@@ -27,8 +27,13 @@ export default function LoginPage() {
     try {
       const role = await login(form)
       navigate(roleHome(role))
-    } catch {
-      setError('Invalid username or password. Please try again.')
+    } catch (err) {
+      const serverMsg = err?.response?.data?.error
+      if (serverMsg && serverMsg.toLowerCase().includes('deactivated')) {
+        setError(serverMsg)
+      } else {
+        setError('Invalid username or password. Please try again.')
+      }
     } finally {
       setLoading(false)
     }
