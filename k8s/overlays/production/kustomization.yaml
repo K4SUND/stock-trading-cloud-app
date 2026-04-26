@@ -29,6 +29,9 @@ images:
   - name: stock-trading-matching-engine-service
     newName: placeholder/stock-trading-matching-engine-service
     newTag: latest
+  - name: stock-trading-notification-service
+    newName: placeholder/stock-trading-notification-service
+    newTag: latest
   - name: stock-trading-frontend
     newName: placeholder/stock-trading-frontend
     newTag: latest

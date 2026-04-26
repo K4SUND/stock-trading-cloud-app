@@ -8,6 +8,7 @@ resources:
   # For local development with docker-compose, postgres still runs via infra/docker-compose.yml
   - db-init-job.yaml           # runs once on first deploy to create databases on RDS
   - kafka.yaml
+  - mongodb.yaml               # notification-service uses MongoDB (not RDS)
   - user-service.yaml
   - order-service.yaml
   - payment-service.yaml
@@ -15,4 +16,5 @@ resources:
   - company-service.yaml
   - gateway-service.yaml
   - matching-engine-service.yaml
+  - notification-service.yaml
   - frontend.yaml

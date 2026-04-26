@@ -47,6 +47,7 @@ jobs:
           - company-service
           - gateway-service
           - matching-engine-service
+          - notification-service
     steps:
       - uses: actions/checkout@v4
         with:
@@ -91,6 +92,7 @@ jobs:
           - company-service
           - gateway-service
           - matching-engine-service
+          - notification-service
     steps:
       - uses: actions/checkout@v4
 
@@ -142,6 +144,7 @@ jobs:
           - company-service
           - gateway-service
           - matching-engine-service
+          - notification-service
           - frontend
     steps:
       - uses: actions/checkout@v4
@@ -246,7 +249,7 @@ jobs:
       - name: Stamp image SHA tags (staging overlay)
         run: |
           cd k8s/overlays/staging
-          for svc in user-service order-service payment-service price-service company-service gateway-service matching-engine-service frontend; do
+          for svc in user-service order-service payment-service price-service company-service gateway-service matching-engine-service notification-service frontend; do
             kustomize edit set image stock-trading-${svc}=${{ env.IMAGE_BASE }}-${svc}:${{ env.IMAGE_TAG }}
           done
 
@@ -259,7 +262,7 @@ jobs:
       - name: Wait for all rollouts
         run: |
           pids=()
-          for svc in user-service order-service payment-service price-service company-service gateway-service matching-engine-service frontend; do
+          for svc in user-service order-service payment-service price-service company-service gateway-service matching-engine-service notification-service frontend; do
             echo "Watching $svc..."
             kubectl rollout status deployment/$svc -n staging --timeout=300s &
             pids+=($!)
@@ -411,7 +414,7 @@ jobs:
       - name: Stamp image SHA tags (production overlay)
         run: |
           cd k8s/overlays/production
-          for svc in user-service order-service payment-service price-service company-service gateway-service matching-engine-service frontend; do
+          for svc in user-service order-service payment-service price-service company-service gateway-service matching-engine-service notification-service frontend; do
             kustomize edit set image stock-trading-${svc}=${{ env.IMAGE_BASE }}-${svc}:${{ env.IMAGE_TAG }}
           done
 
@@ -425,7 +428,7 @@ jobs:
       - name: Wait for all rollouts
         run: |
           pids=()
-          for svc in user-service order-service payment-service price-service company-service gateway-service matching-engine-service frontend; do
+          for svc in user-service order-service payment-service price-service company-service gateway-service matching-engine-service notification-service frontend; do
             echo "Watching $svc..."
             kubectl rollout status deployment/$svc -n production --timeout=300s &
             pids+=($!)
