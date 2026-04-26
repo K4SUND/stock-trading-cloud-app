@@ -1,8 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Client } from '@stomp/stompjs'
 import SockJS from 'sockjs-client'
-import { authHeaders, bookApi, orderApi, paymentApi, priceApi } from '../api'
+import { authHeaders, bookApi, companyApi, orderApi, paymentApi, priceApi } from '../api'
 import { useAuth } from '../context/AuthContext'
 
 const STATUS_META = {
@@ -21,12 +21,105 @@ const INITIAL_FORM = {
   limitPrice: '',
 }
 
+const INSIGHT_RANGES = ['1D', '1W', '1M', '3M', '1Y', 'ALL']
+
+function fmtPointTime(ts) {
+  if (!ts) return 'IPO / Listing start'
+  return new Date(ts).toLocaleString([], {
+    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+  })
+}
+
+function TickerSparkline({ data = [], width = 520, height = 160, color = '#2563eb', pointRadius = 2.5 }) {
+  const [hovered, setHovered] = useState(null)
+
+  if (!data || data.length < 2) {
+    return <div className="book-empty" style={{ padding: '20px 12px' }}>Not enough trade points yet.</div>
+  }
+
+  const normalized = data.map((d, i) => {
+    const price = Number(typeof d === 'number' ? d : d.price)
+    const timestamp = typeof d === 'number' ? null : (d.timestamp || null)
+    const prev = i > 0 ? Number(typeof data[i - 1] === 'number' ? data[i - 1] : data[i - 1].price) : price
+    const change = i > 0 ? price - prev : 0
+    return { price, timestamp, change }
+  })
+
+  const prices = normalized.map(p => p.price)
+  const min = Math.min(...prices)
+  const max = Math.max(...prices)
+  const span = max - min || 1
+
+  const plotted = normalized.map((p, i) => {
+    const x = (i / (normalized.length - 1)) * width
+    const y = height - ((p.price - min) / span) * height
+    return { ...p, x, y, i }
+  })
+
+  const line = plotted.map(p => `${p.x},${p.y}`).join(' ')
+  const changed = plotted.filter((p, idx) => idx > 0 && Math.abs(p.change) > 0.000001)
+
+  return (
+    <div style={{ position: 'relative', display: 'inline-block', width: '100%' }} onMouseLeave={() => setHovered(null)}>
+      <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" style={{ display: 'block' }}>
+        <polyline points={line} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+        {changed.map(p => (
+          <circle
+            key={`chg-${p.i}`}
+            cx={p.x}
+            cy={p.y}
+            r={pointRadius}
+            fill={p.change >= 0 ? '#16a34a' : '#dc2626'}
+            stroke="#ffffff"
+            strokeWidth="1"
+            style={{ cursor: 'pointer' }}
+            onMouseEnter={() => setHovered(p)}
+          />
+        ))}
+      </svg>
+
+      {hovered && (
+        <div
+          style={{
+            position: 'absolute',
+            left: Math.min(Math.max((hovered.x / width) * 100 + 2, 1), 70) + '%',
+            top: Math.max((hovered.y / height) * 100 - 20, 2) + '%',
+            minWidth: 178,
+            background: '#0f172a',
+            color: '#f8fafc',
+            fontSize: 11,
+            borderRadius: 8,
+            padding: '6px 8px',
+            border: '1px solid #1e293b',
+            boxShadow: '0 8px 20px rgba(15,23,42,0.28)',
+            pointerEvents: 'none',
+            zIndex: 10,
+          }}
+        >
+          <div style={{ opacity: 0.82, marginBottom: 2 }}>{fmtPointTime(hovered.timestamp)}</div>
+          <div style={{ fontFamily: 'var(--mono)' }}>Price: ${hovered.price.toFixed(2)}</div>
+          <div style={{ fontFamily: 'var(--mono)', color: hovered.change >= 0 ? '#86efac' : '#fda4af' }}>
+            Change: {hovered.change >= 0 ? '+' : ''}{hovered.change.toFixed(2)}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function fmt$(n)    { return `$${Number(n).toFixed(2)}` }
 function fmtTime(ms) {
   if (!ms) return '—'
   return new Date(ms).toLocaleString([], {
     month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
   })
+}
+
+function websiteToHref(website) {
+  if (!website) return null
+  const value = String(website).trim()
+  if (!value) return null
+  return /^https?:\/\//i.test(value) ? value : `https://${value}`
 }
 
 export default function DashboardPage() {
@@ -50,6 +143,11 @@ export default function DashboardPage() {
   const [cancelling, setCancelling]     = useState(null)
   const [orderBook, setOrderBook]       = useState(null)
   const [marketTrades, setMarketTrades] = useState([])
+  const [stockMetaByTicker, setStockMetaByTicker] = useState({})
+  const [showTickerInsights, setShowTickerInsights] = useState(false)
+  const [insightRange, setInsightRange] = useState('1W')
+  const [insightTrades, setInsightTrades] = useState([])
+  const [insightLoading, setInsightLoading] = useState(false)
   const prevPricesRef  = useRef({})
   const tradeMsgTimer  = useRef(null)
 
@@ -63,17 +161,79 @@ export default function DashboardPage() {
   async function loadTrades()    { const r = await orderApi.get('/trades', { headers }); setTrades(r.data) }
   async function loadIpoPurchases() { const r = await orderApi.get('/ipo-purchases', { headers }); setIpoPurchases(r.data) }
   async function loadBalance()   { const r = await paymentApi.get('/wallet', { headers }); setBalance(r.data.balance) }
-  async function loadMarketTrades() { const r = await orderApi.get('/market/trades'); setMarketTrades(r.data) }
+    async function loadMarketTrades() { const r = await orderApi.get('/market/trades'); setMarketTrades(r.data) }
+    async function loadCompanyStockMeta() {
+    try {
+      const [stocksRes, profilesRes] = await Promise.allSettled([
+        companyApi.get('/public/stocks'),
+        companyApi.get('/public/all'),
+      ])
+
+      const stocks = stocksRes.status === 'fulfilled' ? (stocksRes.value.data || []) : []
+      const profiles = profilesRes.status === 'fulfilled' ? (profilesRes.value.data || []) : []
+      const profileByCompanyName = {}
+
+      for (const p of profiles) {
+        const key = String(p.companyName || '').trim().toLowerCase()
+        if (key) profileByCompanyName[key] = p
+      }
+
+      const byTicker = {}
+      for (const s of stocks) {
+        const nameKey = String(s.companyName || '').trim().toLowerCase()
+        const profile = profileByCompanyName[nameKey]
+        byTicker[s.ticker] = {
+          ...s,
+          contactEmail: s.contactEmail || profile?.contactEmail || '',
+          website: s.website || profile?.website || '',
+        }
+      }
+
+      setStockMetaByTicker(byTicker)
+    } catch {
+      setStockMetaByTicker({})
+    }
+    }
+    async function loadInsightTrades(ticker, range = insightRange) {
+    if (!ticker) {
+      setInsightTrades([])
+      return
+    }
+    setInsightLoading(true)
+    try {
+      const r = await orderApi.get('/market/trades', { params: { ticker, range } })
+      setInsightTrades(r.data || [])
+    } catch {
+      setInsightTrades([])
+    } finally {
+      setInsightLoading(false)
+    }
+    }
   async function loadOrderBook(ticker) {
     try { const r = await bookApi.get(`/${ticker}`); setOrderBook(r.data) }
     catch { setOrderBook({ ticker, bids: [], asks: [] }) }
   }
 
-  function loadAll() {
-    loadStocks(); loadPortfolio(); loadOrders(); loadTrades(); loadIpoPurchases(); loadBalance(); loadMarketTrades()
-  }
+    function loadAll() {
+    loadStocks(); loadPortfolio(); loadOrders(); loadTrades(); loadIpoPurchases(); loadBalance(); loadMarketTrades(); loadCompanyStockMeta()
+    }
 
-  useEffect(() => { loadAll(); loadOrderBook(tradeForm.stockTicker) }, [])
+    useEffect(() => { loadAll(); loadOrderBook(tradeForm.stockTicker) }, [])
+
+    useEffect(() => {
+    if (!showTickerInsights || !tradeForm.stockTicker) return
+    loadInsightTrades(tradeForm.stockTicker, insightRange)
+    }, [showTickerInsights, tradeForm.stockTicker, insightRange])
+
+  // Close ticker insights on ESC key
+  useEffect(() => {
+    if (!showTickerInsights) return
+    function onKeyDown(e) {
+      if (e.key === 'Escape') setShowTickerInsights(false)
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [showTickerInsights])
 
   // Reload order book whenever selected ticker changes
   useEffect(() => { loadOrderBook(tradeForm.stockTicker) }, [tradeForm.stockTicker])
@@ -127,15 +287,21 @@ export default function DashboardPage() {
     }
   }, [stocks])
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
-  function selectStock(ticker) {
+    // ── Helpers ────────────────────────────────────────────────────────────────
+    function selectStock(ticker) {
     const stock = stocks.find(s => s.ticker === ticker)
     setTradeForm(f => ({
       ...f,
       stockTicker: ticker,
       limitPrice:  stock ? Number(stock.currentPrice).toFixed(2) : f.limitPrice,
     }))
-  }
+    }
+
+    function openTickerInsights(ticker) {
+    selectStock(ticker)
+    setShowTickerInsights(true)
+    loadInsightTrades(ticker, insightRange)
+    }
 
   function showMsg(msg) {
     setTradeMsg(msg)
@@ -198,21 +364,21 @@ export default function DashboardPage() {
     }
   }
 
-  // ── Derived values ─────────────────────────────────────────────────────────
-  const currentStock   = stocks.find(s => s.ticker === tradeForm.stockTicker)
-  const estimatedTotal = tradeForm.orderMode === 'LIMIT'
+    // ── Derived values ─────────────────────────────────────────────────────────
+    const currentStock   = stocks.find(s => s.ticker === tradeForm.stockTicker)
+    const estimatedTotal = tradeForm.orderMode === 'LIMIT'
     ? (Number(tradeForm.limitPrice) || 0) * tradeForm.quantity
     : (Number(currentStock?.currentPrice) || 0) * tradeForm.quantity
 
-  const openOrders = orders.filter(o => o.status === 'OPEN' || o.status === 'PARTIALLY_FILLED')
-  const openCount  = openOrders.length
+    const openOrders = orders.filter(o => o.status === 'OPEN' || o.status === 'PARTIALLY_FILLED')
+    const openCount  = openOrders.length
 
-  // Set of my order IDs for fast lookups (still used for trade history labelling)
-  const myOrderIds = new Set(orders.map(o => o.id))
+    // Set of my order IDs for fast lookups (still used for trade history labelling)
+    const myOrderIds = new Set(orders.map(o => o.id))
 
-  // Portfolio rows: avgCostBasis is stored server-side and updated on every buy
-  // (IPO purchase at IPO price, secondary trade at execution price — weighted average).
-  const portfolioRows = portfolio.map(p => {
+    // Portfolio rows: avgCostBasis is stored server-side and updated on every buy
+    // (IPO purchase at IPO price, secondary trade at execution price — weighted average).
+    const portfolioRows = portfolio.map(p => {
     const stock        = stocks.find(s => s.ticker === p.stockTicker)
     const currentPrice = stock ? Number(stock.currentPrice) : null
     const avgCost      = p.avgCostBasis != null ? Number(p.avgCostBasis) : null
@@ -221,20 +387,51 @@ export default function DashboardPage() {
     const pnlPct       = avgCost != null && avgCost > 0 && currentPrice != null
       ? ((currentPrice - avgCost) / avgCost) * 100 : null
     return { ...p, currentPrice, avgCost, mktVal, pnl, pnlPct }
-  })
+    })
 
-  const totalMktVal = portfolioRows.reduce((s, p) => s + (p.mktVal ?? 0), 0)
-  const totalPnl    = portfolioRows.reduce((s, p) => s + (p.pnl ?? 0), 0)
+    const totalMktVal = portfolioRows.reduce((s, p) => s + (p.mktVal ?? 0), 0)
+    const totalPnl    = portfolioRows.reduce((s, p) => s + (p.pnl ?? 0), 0)
 
-  // Filtered orders list for Orders tab
-  const filteredOrders = orderFilter === 'open'
+    // Filtered orders list for Orders tab
+    const filteredOrders = orderFilter === 'open'
     ? orders.filter(o => o.status === 'OPEN' || o.status === 'PARTIALLY_FILLED')
     : orderFilter === 'history'
     ? orders.filter(o => !['OPEN', 'PARTIALLY_FILLED'].includes(o.status))
     : orders
 
-  // ── Render ─────────────────────────────────────────────────────────────────
-  return (
+    // Ticker insights meta and series
+    const insightMeta = stockMetaByTicker[tradeForm.stockTicker]
+    const insightWebsiteHref = websiteToHref(insightMeta?.website)
+    const insightSeries = useMemo(() => {
+    const sorted = [...insightTrades].sort((a, b) => Number(a.executedAt) - Number(b.executedAt))
+    const points = []
+    const ipoPrice = Number(insightMeta?.initialPrice)
+
+    if (Number.isFinite(ipoPrice) && ipoPrice > 0) {
+      points.push({ price: ipoPrice, timestamp: null })
+    }
+
+    for (const t of sorted) {
+      const price = Number(t.price)
+      if (Number.isFinite(price) && price > 0) {
+        points.push({ price, timestamp: t.executedAt })
+      }
+    }
+
+    if (points.length === 0) {
+      const fallback = Number(currentStock?.currentPrice)
+      if (Number.isFinite(fallback) && fallback > 0) {
+        points.push({ price: fallback, timestamp: null }, { price: fallback, timestamp: Date.now() })
+      }
+    } else if (points.length === 1) {
+      points.push({ price: points[0].price, timestamp: Date.now() })
+    }
+
+    return points
+    }, [insightTrades, insightMeta, currentStock])
+
+    // ── Render ─────────────────────────────────────────────────────────────────
+    return (
     <div className="page">
 
       {/* ── Stats Row ─────────────────────────────────────────────────────── */}
@@ -257,13 +454,6 @@ export default function DashboardPage() {
           <span className="stat-label">Open Orders</span>
           <span className="stat-value">{openCount}</span>
         </div>
-        <div className={`stat-card ${wsConnected ? 'stat-card-live' : 'stat-card-offline'}`}>
-          <span className="stat-label">Live Feed</span>
-          <span className="stat-value-sm">
-            <span className={`live-dot ${wsConnected ? 'live-dot-on' : 'live-dot-off'}`} />
-            {wsConnected ? 'Connected' : 'Offline'}
-          </span>
-        </div>
       </div>
 
       {/* ── Market Prices + Trade Form ─────────────────────────────────────── */}
@@ -283,15 +473,17 @@ export default function DashboardPage() {
                 <th className="text-right">Last Trade</th>
                 <th className="text-right">Trade Value</th>
                 <th>Updated</th>
+                <th className="text-right">Details</th>
               </tr>
             </thead>
             <tbody>
-              {stocks.length === 0 && <tr><td colSpan={5} className="empty-row">Loading…</td></tr>}
+              {stocks.length === 0 && <tr><td colSpan={6} className="empty-row">Loading…</td></tr>}
               {stocks.map(s => {
                 const dir      = priceDirs[s.ticker] || 'neutral'
                 const arrow    = dir === 'up' ? '▲' : dir === 'down' ? '▼' : ''
                 const priceCls = dir === 'up' ? 'price-up' : dir === 'down' ? 'price-down' : ''
                 const myPos    = portfolio.find(p => p.stockTicker === s.ticker)
+                const meta     = stockMetaByTicker[s.ticker]
                 return (
                   <tr key={s.ticker}
                     className={`table-row-clickable ${tradeForm.stockTicker === s.ticker ? 'row-selected' : ''}`}
@@ -311,6 +503,20 @@ export default function DashboardPage() {
                       {s.lastTradeValue ? fmt$(s.lastTradeValue) : '—'}
                     </td>
                     <td className="text-muted text-sm">{s.lastUpdatedAt || '—'}</td>
+                    <td className="text-right">
+                      <button
+                        className="btn-ghost"
+                        title={`View ${s.ticker} details and graph`}
+                        aria-label={`View ${s.ticker} details and graph`}
+                        style={{ minWidth: 32, padding: '6px 10px', fontFamily: 'var(--mono)', fontWeight: 700 }}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          openTickerInsights(s.ticker)
+                        }}
+                      >
+                        i
+                      </button>
+                    </td>
                   </tr>
                 )
               })}
@@ -845,6 +1051,109 @@ export default function DashboardPage() {
           {activity.map((msg, i) => <li key={i} className="activity-item">{msg}</li>)}
         </ul>
       </div>
+
+      {showTickerInsights && (
+        <div
+          onClick={() => setShowTickerInsights(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15, 23, 42, 0.62)',
+            zIndex: 2500,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: 'min(980px, 96vw)',
+              maxHeight: '92vh',
+              overflow: 'auto',
+              background: '#fff',
+              border: '1px solid var(--border)',
+              borderRadius: 12,
+              boxShadow: '0 20px 50px rgba(15,23,42,0.35)',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                justifyContent: 'space-between',
+                gap: 12,
+                padding: '14px 16px',
+                borderBottom: '1px solid var(--border)',
+                background: '#f8fafc',
+              }}
+            >
+              <div>
+                <h3 className="card-title" style={{ marginBottom: 2 }}>
+                  {tradeForm.stockTicker} — {insightMeta?.companyName || 'Company'}
+                </h3>
+                <div className="card-hint">
+                  <div><strong>Name:</strong> {insightMeta?.companyName || 'Not provided'}</div>
+                  <div><strong>Description:</strong> {insightMeta?.description || 'Not provided'}</div>
+                  <div><strong>Email:</strong> {insightMeta?.contactEmail || 'Not provided'}</div>
+                  <div>
+                    <strong>Website:</strong>{' '}
+                    {insightMeta?.website
+                      ? (
+                        <a href={insightWebsiteHref || '#'} target="_blank" rel="noreferrer">
+                          {insightMeta.website}
+                        </a>
+                      )
+                      : 'Not provided'}
+                  </div>
+                </div>
+              </div>
+              <button
+                className="btn-ghost"
+                aria-label="Close details"
+                title="Close"
+                style={{ minWidth: 36, padding: '6px 10px', fontSize: 18, lineHeight: 1 }}
+                onClick={() => setShowTickerInsights(false)}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ padding: 16 }}>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
+                {INSIGHT_RANGES.map(r => (
+                  <button
+                    key={r}
+                    className={`filter-btn ${insightRange === r ? 'filter-btn-active' : ''}`}
+                    onClick={() => setInsightRange(r)}
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
+
+              <div style={{ border: '1px solid var(--border)', borderRadius: 10, background: '#fff', padding: 10 }}>
+                {insightLoading ? (
+                  <div className="book-empty" style={{ padding: '18px 12px' }}>Loading chart...</div>
+                ) : (
+                  <TickerSparkline
+                    data={insightSeries}
+                    color={priceDirs[tradeForm.stockTicker] === 'down' ? '#dc2626' : '#16a34a'}
+                    width={880}
+                    height={260}
+                    pointRadius={3}
+                  />
+                )}
+              </div>
+
+              <div className="text-muted text-sm" style={{ marginTop: 8 }}>
+                Showing {insightTrades.length} trade points for {tradeForm.stockTicker} in range {insightRange}. Hover highlighted points for date/time and change.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
