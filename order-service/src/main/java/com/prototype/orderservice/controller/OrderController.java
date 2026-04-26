@@ -87,8 +87,10 @@ public class OrderController {
 
     // ── Public market feeds ───────────────────────────────────────────────────
     @GetMapping("/market/trades")
-    public ResponseEntity<List<TradeResponse>> marketTrades() {
-        return ResponseEntity.ok(orderProcessingService.recentMarketTrades());
+    public ResponseEntity<List<TradeResponse>> marketTrades(
+            @RequestParam(required = false) String ticker,
+            @RequestParam(required = false) String range) {
+        return ResponseEntity.ok(orderProcessingService.marketTrades(ticker, range));
     }
 
     // ── Internal endpoints ────────────────────────────────────────────────────

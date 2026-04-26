@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { authHeaders, companyApi, priceApi, orderApi, userApi } from '../api'
 import { useAuth } from '../context/AuthContext'
 
@@ -75,6 +75,7 @@ const emptyProfile = { companyName: '', description: '', contactEmail: '', websi
 const emptyStock = { ticker: '', initialPrice: '', totalShares: '', description: '' }
 
 const TABS = ['Overview', 'Listing', 'Traders', 'Settings']
+const CHART_RANGES = ['1D', '1W', '1M', '3M', '1Y', 'ALL']
 
 export default function CompanyDashboardPage() {
   const { token } = useAuth()
@@ -87,13 +88,37 @@ export default function CompanyDashboardPage() {
   const [profileLoading, setProfileLoading] = useState(false)
   const [stocks, setStocks] = useState([])
   const [prices, setPrices] = useState({})
+  const [marketTrades, setMarketTrades] = useState([])
   const [traders, setTraders] = useState([])
   const [stockForm, setStockForm] = useState(emptyStock)
   const [stockMsg, setStockMsg] = useState(null)
   const [stockLoading, setStockLoading] = useState(false)
   const [isEditingStock, setIsEditingStock] = useState(false)
+  const [chartRange, setChartRange] = useState('ALL')
 
-  useEffect(() => { loadProfile(); loadStocks(); loadPrices() }, [])
+  // Single listing: if exists, update it; otherwise create
+  const existingStock = stocks[0] || null
+
+  useEffect(() => {
+    if (!token) return
+    loadProfile()
+    loadStocks()
+    loadPrices()
+  }, [token])
+
+  useEffect(() => {
+    if (!token) return
+    if (!existingStock?.ticker) {
+      setMarketTrades([])
+      return
+    }
+    loadMarketTrades(existingStock.ticker, chartRange)
+    const timer = setInterval(() => {
+      loadPrices()
+      loadMarketTrades(existingStock.ticker, chartRange)
+    }, 5000)
+    return () => clearInterval(timer)
+  }, [token, existingStock?.ticker, chartRange])
 
   async function loadProfile() {
     try {
@@ -117,6 +142,20 @@ export default function CompanyDashboardPage() {
       for (const p of res.data) map[p.ticker] = p
       setPrices(map)
     } catch { setPrices({}) }
+  }
+
+  async function loadMarketTrades(ticker, range) {
+    if (!ticker) {
+      setMarketTrades([])
+      return
+    }
+    try {
+      const res = await orderApi.get('/market/trades', {
+        headers,
+        params: { ticker, range },
+      })
+      setMarketTrades(res.data)
+    } catch {}
   }
 
   async function loadTraders(tickers) {
@@ -149,8 +188,6 @@ export default function CompanyDashboardPage() {
     } finally { setProfileLoading(false) }
   }
 
-  // Single listing: if exists, update it; otherwise create
-  const existingStock = stocks[0] || null
 
   function startEditStock() {
     if (existingStock) {
@@ -201,10 +238,35 @@ export default function CompanyDashboardPage() {
   const totalShares = stocks.reduce((acc, s) => acc + Number(s.totalShares), 0)
   const totalSharesHeld = traders.reduce((acc, t) => acc + t.total, 0)
 
-  function mockSpark(seed) {
-    let v = 100 + seed * 13
-    return Array.from({ length: 20 }, () => { v += (Math.random() - 0.48) * 5; return Math.max(v, 10) })
+  function buildTransactionSeries(ticker, ipoPrice, currentPrice) {
+    const trades = marketTrades
+      .filter(t => t.ticker === ticker)
+      .slice()
+      .sort((a, b) => a.executedAt - b.executedAt)
+
+    const start = Number(ipoPrice ?? currentPrice ?? 0)
+    const series = Number.isFinite(start) && start > 0 ? [start] : []
+
+    for (const trade of trades) {
+      const price = Number(trade.price)
+      if (Number.isFinite(price) && price > 0) series.push(price)
+    }
+
+    const fallback = Number(currentPrice ?? ipoPrice ?? 0)
+    if (series.length === 0 && Number.isFinite(fallback) && fallback > 0) {
+      return [fallback, fallback]
+    }
+    if (series.length === 1) series.push(series[0])
+    return series.length > 0 ? series : [1, 1]
   }
+
+  const listedTicker = existingStock?.ticker || null
+  const liveChartData = useMemo(() => {
+    if (!existingStock) return []
+    const p = prices[existingStock.ticker]
+    const current = p ? Number(p.currentPrice) : Number(existingStock.initialPrice)
+    return buildTransactionSeries(existingStock.ticker, existingStock.initialPrice, current)
+  }, [existingStock, prices, marketTrades])
 
   return (
     <>
@@ -534,6 +596,21 @@ export default function CompanyDashboardPage() {
         .cdb-inline-form-head-title { font-family: var(--display); font-size: 14px; font-weight: 800; color: var(--accent); }
         .cdb-inline-form-body { padding: 24px 22px; }
         .cdb-form-row { margin-bottom: 20px; }
+
+        .cdb-range-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+        .cdb-range-btn {
+          border: 1px solid var(--border2);
+          background: var(--surface);
+          color: var(--muted);
+          border-radius: 999px;
+          padding: 4px 10px;
+          font-size: 11px;
+          font-family: var(--mono);
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+        .cdb-range-btn:hover { color: var(--accent); border-color: #93c5fd; background: var(--accent-lt); }
+        .cdb-range-btn.active { color: var(--accent); border-color: var(--accent); background: var(--accent-lt); }
       `}</style>
 
       <div className="cdb-wrap">
@@ -638,7 +715,23 @@ export default function CompanyDashboardPage() {
                           </div>
                         </div>
                         <div style={{ marginBottom: 20 }}>
-                          <Sparkline data={mockSpark(0)} color={delta >= 0 ? 'var(--green)' : 'var(--red)'} width={420} height={56} />
+                          <div className="cdb-range-row">
+                            {CHART_RANGES.map(r => (
+                              <button
+                                key={r}
+                                className={`cdb-range-btn ${chartRange === r ? 'active' : ''}`}
+                                onClick={() => setChartRange(r)}
+                              >
+                                {r}
+                              </button>
+                            ))}
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            <Sparkline data={liveChartData} color={delta >= 0 ? 'var(--green)' : 'var(--red)'} width={420} height={56} />
+                            <span style={{ fontSize: 11, color: 'var(--muted2)' }}>
+                              History {chartRange} from executed trades{listedTicker ? ` for ${listedTicker}` : ''}
+                            </span>
+                          </div>
                         </div>
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, paddingTop: 18, borderTop: '1px solid var(--border)' }}>
                           {[
@@ -773,7 +866,18 @@ export default function CompanyDashboardPage() {
                         <div className={delta >= 0 ? 'delta-up' : 'delta-down'} style={{ fontSize: 13, marginTop: 4 }}>
                           {delta >= 0 ? '+' : ''}{delta.toFixed(2)}% from IPO (${init.toFixed(2)})
                         </div>
-                        <Sparkline data={mockSpark(0)} color={delta >= 0 ? 'var(--green)' : 'var(--red)'} width={140} height={40} />
+                        <div className="cdb-range-row" style={{ justifyContent: 'flex-end', marginTop: 8, marginBottom: 8 }}>
+                          {CHART_RANGES.map(r => (
+                            <button
+                              key={r}
+                              className={`cdb-range-btn ${chartRange === r ? 'active' : ''}`}
+                              onClick={() => setChartRange(r)}
+                            >
+                              {r}
+                            </button>
+                          ))}
+                        </div>
+                        <Sparkline data={liveChartData} color={delta >= 0 ? 'var(--green)' : 'var(--red)'} width={140} height={40} />
                       </div>
                     </div>
                     <div className="cdb-listing-kpis">
