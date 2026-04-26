@@ -37,7 +37,6 @@ images:
     newTag: latest
 
 # Production = 2 replicas for high availability.
-# gateway-service and user-service get 3 (they handle all traffic and auth).
 patches:
   - patch: |-
       - op: replace
@@ -45,17 +44,3 @@ patches:
         value: 2
     target:
       kind: Deployment
-  - patch: |-
-      - op: replace
-        path: /spec/replicas
-        value: 3
-    target:
-      kind: Deployment
-      name: gateway-service
-  - patch: |-
-      - op: replace
-        path: /spec/replicas
-        value: 3
-    target:
-      kind: Deployment
-      name: user-service
