@@ -49,3 +49,11 @@ patches:
         value: 1
     target:
       kind: Deployment
+
+  - patch: |-
+      - op: add
+        path: /spec/strategy
+        value:
+          type: Recreate
+      target:
+      kind: Deployment
