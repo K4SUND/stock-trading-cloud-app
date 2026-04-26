@@ -50,6 +50,7 @@ export default function DashboardPage() {
   const [cancelling, setCancelling]     = useState(null)
   const [orderBook, setOrderBook]       = useState(null)
   const [marketTrades, setMarketTrades] = useState([])
+  const [marketOpen, setMarketOpen]     = useState(null)
   const prevPricesRef  = useRef({})
   const tradeMsgTimer  = useRef(null)
 
@@ -64,13 +65,16 @@ export default function DashboardPage() {
   async function loadIpoPurchases() { const r = await orderApi.get('/ipo-purchases', { headers }); setIpoPurchases(r.data) }
   async function loadBalance()   { const r = await paymentApi.get('/wallet', { headers }); setBalance(r.data.balance) }
   async function loadMarketTrades() { const r = await orderApi.get('/market/trades'); setMarketTrades(r.data) }
+  async function loadMarketStatus() {
+    try { const r = await orderApi.get('/market/status'); setMarketOpen(r.data.open) } catch {}
+  }
   async function loadOrderBook(ticker) {
     try { const r = await bookApi.get(`/${ticker}`); setOrderBook(r.data) }
     catch { setOrderBook({ ticker, bids: [], asks: [] }) }
   }
 
   function loadAll() {
-    loadStocks(); loadPortfolio(); loadOrders(); loadTrades(); loadIpoPurchases(); loadBalance(); loadMarketTrades()
+    loadStocks(); loadPortfolio(); loadOrders(); loadTrades(); loadIpoPurchases(); loadBalance(); loadMarketTrades(); loadMarketStatus()
   }
 
   useEffect(() => { loadAll(); loadOrderBook(tradeForm.stockTicker) }, [])
@@ -264,7 +268,22 @@ export default function DashboardPage() {
             {wsConnected ? 'Connected' : 'Offline'}
           </span>
         </div>
+        {marketOpen !== null && (
+          <div className={`stat-card ${marketOpen ? 'stat-card-live' : 'stat-card-offline'}`}>
+            <span className="stat-label">Market</span>
+            <span className="stat-value-sm">
+              <span className={`live-dot ${marketOpen ? 'live-dot-on' : 'live-dot-off'}`} />
+              {marketOpen ? 'Open' : 'Closed'}
+            </span>
+          </div>
+        )}
       </div>
+
+      {!marketOpen && marketOpen !== null && (
+        <div className="alert alert-error" style={{ margin: 0 }}>
+          The market is currently closed. New orders cannot be placed.
+        </div>
+      )}
 
       {/* ── Market Prices + Trade Form ─────────────────────────────────────── */}
       <div className="dash-grid">
