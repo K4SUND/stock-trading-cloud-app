@@ -319,7 +319,7 @@ jobs:
 
       - name: Smoke test — auth endpoint reachable
         run: |
-          STATUS=$(curl -sf -o /dev/null -w "%{http_code}" \
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
             -X POST "${GATEWAY_URL}/api/users/auth/login" \
             -H "Content-Type: application/json" \
             -d '{"username":"smoke","password":"test"}')
