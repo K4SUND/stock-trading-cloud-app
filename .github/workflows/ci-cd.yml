@@ -259,19 +259,46 @@ jobs:
       - name: Wait for db-init Job to complete
         run: kubectl wait --for=condition=complete job/db-init -n staging --timeout=120s
 
-      - name: Wait for all rollouts
+      - name: Wait for infrastructure (Kafka + MongoDB ready before services roll)
+        run: |
+          kubectl rollout status statefulset/kafka    -n staging --timeout=120s
+          kubectl rollout status statefulset/mongodb  -n staging --timeout=60s
+
+      - name: Wait for rollouts — batch 1 (data + core services)
         run: |
           pids=()
-          for svc in user-service order-service payment-service price-service company-service gateway-service matching-engine-service notification-service frontend; do
+          for svc in user-service order-service payment-service; do
             echo "Watching $svc..."
-            kubectl rollout status deployment/$svc -n staging --timeout=300s &
+            kubectl rollout status deployment/$svc -n staging --timeout=600s &
             pids+=($!)
           done
           failed=0
-          for pid in "${pids[@]}"; do
-            wait "$pid" || failed=1
+          for pid in "${pids[@]}"; do wait "$pid" || failed=1; done
+          [ "$failed" -eq 0 ] || { kubectl get pods -n staging; kubectl get events -n staging --sort-by='.lastTimestamp' | tail -20; exit 1; }
+
+      - name: Wait for rollouts — batch 2 (price + company + gateway)
+        run: |
+          pids=()
+          for svc in price-service company-service gateway-service; do
+            echo "Watching $svc..."
+            kubectl rollout status deployment/$svc -n staging --timeout=600s &
+            pids+=($!)
           done
-          [ "$failed" -eq 0 ] || { echo "One or more rollouts timed out"; exit 1; }
+          failed=0
+          for pid in "${pids[@]}"; do wait "$pid" || failed=1; done
+          [ "$failed" -eq 0 ] || { kubectl get pods -n staging; kubectl get events -n staging --sort-by='.lastTimestamp' | tail -20; exit 1; }
+
+      - name: Wait for rollouts — batch 3 (matching-engine + notification + frontend)
+        run: |
+          pids=()
+          for svc in matching-engine-service notification-service frontend; do
+            echo "Watching $svc..."
+            kubectl rollout status deployment/$svc -n staging --timeout=600s &
+            pids+=($!)
+          done
+          failed=0
+          for pid in "${pids[@]}"; do wait "$pid" || failed=1; done
+          [ "$failed" -eq 0 ] || { kubectl get pods -n staging; kubectl get events -n staging --sort-by='.lastTimestamp' | tail -20; exit 1; }
 
   # ═══════════════════════════════════════════════════════════════════════
   # STAGE 4: Smoke Tests on Staging
@@ -425,19 +452,46 @@ jobs:
       - name: Wait for db-init Job to complete
         run: kubectl wait --for=condition=complete job/db-init -n production --timeout=120s
 
-      - name: Wait for all rollouts
+      - name: Wait for infrastructure (Kafka + MongoDB)
+        run: |
+          kubectl rollout status statefulset/kafka    -n production --timeout=120s
+          kubectl rollout status statefulset/mongodb  -n production --timeout=60s
+
+      - name: Wait for rollouts — batch 1 (data + core services)
         run: |
           pids=()
-          for svc in user-service order-service payment-service price-service company-service gateway-service matching-engine-service notification-service frontend; do
+          for svc in user-service order-service payment-service; do
             echo "Watching $svc..."
-            kubectl rollout status deployment/$svc -n production --timeout=300s &
+            kubectl rollout status deployment/$svc -n production --timeout=600s &
             pids+=($!)
           done
           failed=0
-          for pid in "${pids[@]}"; do
-            wait "$pid" || failed=1
+          for pid in "${pids[@]}"; do wait "$pid" || failed=1; done
+          [ "$failed" -eq 0 ] || { kubectl get pods -n production; kubectl get events -n production --sort-by='.lastTimestamp' | tail -20; exit 1; }
+
+      - name: Wait for rollouts — batch 2 (price + company + gateway)
+        run: |
+          pids=()
+          for svc in price-service company-service gateway-service; do
+            echo "Watching $svc..."
+            kubectl rollout status deployment/$svc -n production --timeout=600s &
+            pids+=($!)
           done
-          [ "$failed" -eq 0 ] || { echo "One or more rollouts timed out"; exit 1; }
+          failed=0
+          for pid in "${pids[@]}"; do wait "$pid" || failed=1; done
+          [ "$failed" -eq 0 ] || { kubectl get pods -n production; kubectl get events -n production --sort-by='.lastTimestamp' | tail -20; exit 1; }
+
+      - name: Wait for rollouts — batch 3 (matching-engine + notification + frontend)
+        run: |
+          pids=()
+          for svc in matching-engine-service notification-service frontend; do
+            echo "Watching $svc..."
+            kubectl rollout status deployment/$svc -n production --timeout=600s &
+            pids+=($!)
+          done
+          failed=0
+          for pid in "${pids[@]}"; do wait "$pid" || failed=1; done
+          [ "$failed" -eq 0 ] || { kubectl get pods -n production; kubectl get events -n production --sort-by='.lastTimestamp' | tail -20; exit 1; }
 
       - name: Post-deploy production health check
         run: |
