@@ -38,11 +38,15 @@ images:
     newName: placeholder/stock-trading-frontend
     newTag: latest
 
-# Staging = 1 replica per service (saves cloud resources during QA)
+# Staging = 1 replica per service, Recreate strategy (no concurrent old+new pods on small nodes)
 patches:
   - patch: |-
       - op: replace
         path: /spec/replicas
         value: 1
+      - op: add
+        path: /spec/strategy
+        value:
+          type: Recreate
     target:
       kind: Deployment
