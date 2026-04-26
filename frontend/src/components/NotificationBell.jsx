@@ -8,14 +8,21 @@ export default function NotificationBell() {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
 
+  // Track locally dismissed broadcast IDs so they don't reappear on next poll
+  const dismissedBroadcasts = useRef(new Set())
+
   const unread = notifications.filter(n => !n.read).length
 
   async function fetchNotifications() {
     try {
       const res = await notificationApi.get('', { headers: authHeaders(token) })
-      setNotifications(res.data)
+      // Filter out locally dismissed broadcasts
+      const filtered = res.data.filter(n =>
+        !(n.broadcast && dismissedBroadcasts.current.has(n.id))
+      )
+      setNotifications(filtered)
     } catch {
-      // silently ignore — service may not be running locally
+      // silently ignore
     }
   }
 
@@ -37,7 +44,15 @@ export default function NotificationBell() {
   async function handleMarkAllRead() {
     try {
       await notificationApi.patch('/read-all', {}, { headers: authHeaders(token) })
-      setNotifications(prev => prev.map(n => ({ ...n, read: true })))
+      // Mark all broadcasts as dismissed locally
+      notifications
+        .filter(n => n.broadcast)
+        .forEach(n => dismissedBroadcasts.current.add(n.id))
+      setNotifications(prev =>
+        prev
+          .map(n => ({ ...n, read: true }))
+          .filter(n => !n.broadcast) // remove broadcasts from view
+      )
     } catch {}
   }
 
@@ -52,6 +67,9 @@ export default function NotificationBell() {
     e.stopPropagation()
     try {
       await notificationApi.delete(`/${id}`, { headers: authHeaders(token) })
+      // If broadcast, track it locally so it doesn't reappear on poll
+      const n = notifications.find(n => n.id === id)
+      if (n?.broadcast) dismissedBroadcasts.current.add(id)
       setNotifications(prev => prev.filter(n => n.id !== id))
     } catch {}
   }
@@ -62,14 +80,14 @@ export default function NotificationBell() {
   }
 
   const TYPE_ICON = {
-    ORDER_PLACED:       '📋',
-    TRADE_EXECUTED:     '✅',
-    ORDER_CANCELLED:    '❌',
-    IPO_PURCHASED:      '🏦',
-    STOCK_LISTED:       '🚀',
-    SHARES_ISSUED:      '📈',
-    COMPANY_IPO_SALE:   '💰',
-    COMPANY_TRADE:      '🔄',
+    ORDER_PLACED:     '📋',
+    TRADE_EXECUTED:   '✅',
+    ORDER_CANCELLED:  '❌',
+    IPO_PURCHASED:    '🏦',
+    STOCK_LISTED:     '🚀',
+    SHARES_ISSUED:    '📈',
+    COMPANY_IPO_SALE: '💰',
+    COMPANY_TRADE:    '🔄',
   }
 
   return (
@@ -92,7 +110,7 @@ export default function NotificationBell() {
         <div className="notif-dropdown">
           <div className="notif-header">
             <span className="notif-title">Notifications</span>
-            {unread > 0 && (
+            {(unread > 0 || notifications.some(n => n.broadcast)) && (
               <button className="notif-mark-all" onClick={handleMarkAllRead}>
                 Mark all read
               </button>
@@ -120,13 +138,12 @@ export default function NotificationBell() {
                     <div className="notif-item-msg">{n.message}</div>
                     <div className="notif-item-time">{formatTime(n.createdAt)}</div>
                   </div>
-                  {!n.broadcast && (
-                    <button
-                      className="notif-delete-btn"
-                      onClick={(e) => handleDelete(n.id, e)}
-                      title="Dismiss"
-                    >×</button>
-                  )}
+                  {/* DELETE button now shows for ALL notifications including broadcasts */}
+                  <button
+                    className="notif-delete-btn"
+                    onClick={(e) => handleDelete(n.id, e)}
+                    title="Dismiss"
+                  >×</button>
                 </div>
               ))
             )}

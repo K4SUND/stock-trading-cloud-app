@@ -144,7 +144,7 @@ public class NotificationService {
         List<Notification> all = new ArrayList<>();
         all.addAll(repository.findByUserIdOrderByCreatedAtDesc(userId));
         // Only show broadcasts that user hasn't dismissed
-        all.addAll(repository.findByBroadcastTrueAndDismissedByUserIdNotContaining(userId));
+        all.addAll(repository.findByBroadcastTrueAndDismissedByUserIdsNotContaining(userId));
         all.sort(Comparator.comparing(Notification::getCreatedAt).reversed());
         return all;
     }
@@ -172,7 +172,7 @@ public class NotificationService {
         repository.saveAll(unread);
 
         // Broadcast notifications — add userId to dismissed list
-        List<Notification> broadcasts = repository.findByBroadcastTrueAndDismissedByUserIdNotContaining(userId);
+        List<Notification> broadcasts = repository.findByBroadcastTrueAndDismissedByUserIdsNotContaining(userId);
         broadcasts.forEach(n -> n.getDismissedByUserIds().add(userId));
         repository.saveAll(broadcasts);
     }

@@ -10,4 +10,7 @@ public interface NotificationRepository extends MongoRepository<Notification, St
     List<Notification> findByBroadcastTrueOrderByCreatedAtDesc();
     List<Notification> findByUserIdAndReadFalse(Long userId);
     long countByUserIdAndReadFalse(Long userId);
+
+    // ADD THIS — broadcasts not yet dismissed by this user
+    List<Notification> findByBroadcastTrueAndDismissedByUserIdsNotContaining(Long userId);
 }
