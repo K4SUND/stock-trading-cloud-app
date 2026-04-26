@@ -260,7 +260,7 @@ jobs:
         run: |
           for svc in user-service order-service payment-service price-service company-service gateway-service matching-engine-service frontend; do
             echo "Waiting for $svc..."
-            kubectl rollout status deployment/$svc -n staging --timeout=180s
+            kubectl rollout status deployment/$svc -n staging --timeout=300s
           done
 
   # ═══════════════════════════════════════════════════════════════════════
