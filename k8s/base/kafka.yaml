@@ -28,14 +28,14 @@ spec:
             - name: ZOOKEEPER_TICK_TIME
               value: "2000"
             - name: KAFKA_HEAP_OPTS
-              value: "-Xmx192M -Xms128M"
+              value: "-Xmx256M -Xms128M"
           resources:
             requests:
-              cpu: 50m
-              memory: 256Mi
+              cpu: 100m
+              memory: 384Mi
             limits:
-              cpu: 250m
-              memory: 512Mi
+              cpu: 400m
+              memory: 768Mi
 ---
 apiVersion: v1
 kind: Service
@@ -92,14 +92,14 @@ spec:
             - name: KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS
               value: "0"
             - name: KAFKA_HEAP_OPTS
-              value: "-Xmx384M -Xms256M"
+              value: "-Xmx512M -Xms256M"
           resources:
             requests:
-              cpu: 150m
-              memory: 512Mi
+              cpu: 200m
+              memory: 640Mi
             limits:
-              cpu: 700m
-              memory: 1024Mi
+              cpu: 900m
+              memory: 1280Mi
           readinessProbe:
             tcpSocket:
               port: 9092
