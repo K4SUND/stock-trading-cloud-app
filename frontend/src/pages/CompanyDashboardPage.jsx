@@ -1,21 +1,85 @@
-import React, { useEffect, useState, useRef } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { authHeaders, companyApi, priceApi, orderApi, userApi } from '../api'
 import { useAuth } from '../context/AuthContext'
 
 // ─── Micro sparkline SVG ─────────────────────────────────────────────────────
-function Sparkline({ data = [], color = '#2563eb', width = 80, height = 32 }) {
+function fmtPointTime(ts) {
+  if (!ts) return 'IPO / Listing start'
+  return new Date(ts).toLocaleString([], {
+    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+  })
+}
+
+function Sparkline({ data = [], color = '#2563eb', width = 80, height = 32, pointRadius = 2 }) {
+  const [hovered, setHovered] = useState(null)
+
   if (!data || data.length < 2) return <span style={{ color: 'var(--muted)', fontSize: 11 }}>No data</span>
-  const min = Math.min(...data), max = Math.max(...data)
+
+  const normalized = data.map((d, i) => {
+    const price = Number(typeof d === 'number' ? d : d.price)
+    const timestamp = typeof d === 'number' ? null : (d.timestamp || null)
+    const prev = i > 0 ? Number(typeof data[i - 1] === 'number' ? data[i - 1] : data[i - 1].price) : price
+    const change = i > 0 ? (price - prev) : 0
+    return { price, timestamp, change }
+  })
+
+  const prices = normalized.map(p => p.price)
+  const min = Math.min(...prices)
+  const max = Math.max(...prices)
   const range = max - min || 1
-  const pts = data.map((v, i) => {
-    const x = (i / (data.length - 1)) * width
-    const y = height - ((v - min) / range) * height
-    return `${x},${y}`
-  }).join(' ')
+  const plotted = normalized.map((p, i) => {
+    const x = (i / (normalized.length - 1)) * width
+    const y = height - ((p.price - min) / range) * height
+    return { ...p, x, y, i }
+  })
+
+  const pts = plotted.map(p => `${p.x},${p.y}`).join(' ')
+  const changed = plotted.filter((p, idx) => idx > 0 && Math.abs(p.change) > 0.000001)
+
   return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ display: 'block' }}>
-      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
-    </svg>
+    <div style={{ position: 'relative', display: 'inline-block' }} onMouseLeave={() => setHovered(null)}>
+      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ display: 'block' }}>
+        <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+        {changed.map(p => (
+          <circle
+            key={`cp-${p.i}`}
+            cx={p.x}
+            cy={p.y}
+            r={pointRadius}
+            fill={p.change >= 0 ? '#16a34a' : '#dc2626'}
+            stroke="#ffffff"
+            strokeWidth="1"
+            style={{ cursor: 'pointer' }}
+            onMouseEnter={() => setHovered(p)}
+          />
+        ))}
+      </svg>
+      {hovered && (
+        <div
+          style={{
+            position: 'absolute',
+            left: Math.min(Math.max(hovered.x + 8, 8), width - 180),
+            top: Math.max(hovered.y - 54, 4),
+            minWidth: 170,
+            background: '#0f172a',
+            color: '#f8fafc',
+            fontSize: 11,
+            borderRadius: 8,
+            padding: '6px 8px',
+            border: '1px solid #1e293b',
+            boxShadow: '0 8px 20px rgba(15,23,42,0.28)',
+            pointerEvents: 'none',
+            zIndex: 20,
+          }}
+        >
+          <div style={{ opacity: 0.82, marginBottom: 2 }}>{fmtPointTime(hovered.timestamp)}</div>
+          <div style={{ fontFamily: 'var(--mono)' }}>Price: ${hovered.price.toFixed(2)}</div>
+          <div style={{ fontFamily: 'var(--mono)', color: hovered.change >= 0 ? '#86efac' : '#fda4af' }}>
+            Change: {hovered.change >= 0 ? '+' : ''}{hovered.change.toFixed(2)}
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -75,6 +139,7 @@ const emptyProfile = { companyName: '', description: '', contactEmail: '', websi
 const emptyStock = { ticker: '', initialPrice: '', totalShares: '', description: '' }
 
 const TABS = ['Overview', 'Listing', 'Traders', 'Settings']
+const CHART_RANGES = ['1D', '1W', '1M', '3M', '1Y', 'ALL']
 
 export default function CompanyDashboardPage() {
   const { token } = useAuth()
@@ -87,13 +152,38 @@ export default function CompanyDashboardPage() {
   const [profileLoading, setProfileLoading] = useState(false)
   const [stocks, setStocks] = useState([])
   const [prices, setPrices] = useState({})
+  const [marketTrades, setMarketTrades] = useState([])
   const [traders, setTraders] = useState([])
   const [stockForm, setStockForm] = useState(emptyStock)
   const [stockMsg, setStockMsg] = useState(null)
   const [stockLoading, setStockLoading] = useState(false)
   const [isEditingStock, setIsEditingStock] = useState(false)
+  const [chartRange, setChartRange] = useState('ALL')
+  const [chartModalOpen, setChartModalOpen] = useState(false)
 
-  useEffect(() => { loadProfile(); loadStocks(); loadPrices() }, [])
+  // Single listing: if exists, update it; otherwise create
+  const existingStock = stocks[0] || null
+
+  useEffect(() => {
+    if (!token) return
+    loadProfile()
+    loadStocks()
+    loadPrices()
+  }, [token])
+
+  useEffect(() => {
+    if (!token) return
+    if (!existingStock?.ticker) {
+      setMarketTrades([])
+      return
+    }
+    loadMarketTrades(existingStock.ticker, chartRange)
+    const timer = setInterval(() => {
+      loadPrices()
+      loadMarketTrades(existingStock.ticker, chartRange)
+    }, 5000)
+    return () => clearInterval(timer)
+  }, [token, existingStock?.ticker, chartRange])
 
   async function loadProfile() {
     try {
@@ -117,6 +207,20 @@ export default function CompanyDashboardPage() {
       for (const p of res.data) map[p.ticker] = p
       setPrices(map)
     } catch { setPrices({}) }
+  }
+
+  async function loadMarketTrades(ticker, range) {
+    if (!ticker) {
+      setMarketTrades([])
+      return
+    }
+    try {
+      const res = await orderApi.get('/market/trades', {
+        headers,
+        params: { ticker, range },
+      })
+      setMarketTrades(res.data)
+    } catch {}
   }
 
   async function loadTraders(tickers) {
@@ -149,8 +253,6 @@ export default function CompanyDashboardPage() {
     } finally { setProfileLoading(false) }
   }
 
-  // Single listing: if exists, update it; otherwise create
-  const existingStock = stocks[0] || null
 
   function startEditStock() {
     if (existingStock) {
@@ -201,10 +303,44 @@ export default function CompanyDashboardPage() {
   const totalShares = stocks.reduce((acc, s) => acc + Number(s.totalShares), 0)
   const totalSharesHeld = traders.reduce((acc, t) => acc + t.total, 0)
 
-  function mockSpark(seed) {
-    let v = 100 + seed * 13
-    return Array.from({ length: 20 }, () => { v += (Math.random() - 0.48) * 5; return Math.max(v, 10) })
+  function buildTransactionSeries(ticker, ipoPrice, currentPrice) {
+    const trades = marketTrades
+      .filter(t => t.ticker === ticker)
+      .slice()
+      .sort((a, b) => a.executedAt - b.executedAt)
+
+    const start = Number(ipoPrice ?? currentPrice ?? 0)
+    const series = Number.isFinite(start) && start > 0
+      ? [{ price: start, timestamp: null }]
+      : []
+
+    for (const trade of trades) {
+      const price = Number(trade.price)
+      if (Number.isFinite(price) && price > 0) {
+        series.push({ price, timestamp: trade.executedAt })
+      }
+    }
+
+    const fallback = Number(currentPrice ?? ipoPrice ?? 0)
+    if (series.length === 0 && Number.isFinite(fallback) && fallback > 0) {
+      return [
+        { price: fallback, timestamp: null },
+        { price: fallback, timestamp: Date.now() },
+      ]
+    }
+    if (series.length === 1) {
+      series.push({ price: series[0].price, timestamp: Date.now() })
+    }
+    return series.length > 0 ? series : [{ price: 1, timestamp: null }, { price: 1, timestamp: Date.now() }]
   }
+
+  const listedTicker = existingStock?.ticker || null
+  const liveChartData = useMemo(() => {
+    if (!existingStock) return []
+    const p = prices[existingStock.ticker]
+    const current = p ? Number(p.currentPrice) : Number(existingStock.initialPrice)
+    return buildTransactionSeries(existingStock.ticker, existingStock.initialPrice, current)
+  }, [existingStock, prices, marketTrades])
 
   return (
     <>
@@ -534,6 +670,68 @@ export default function CompanyDashboardPage() {
         .cdb-inline-form-head-title { font-family: var(--display); font-size: 14px; font-weight: 800; color: var(--accent); }
         .cdb-inline-form-body { padding: 24px 22px; }
         .cdb-form-row { margin-bottom: 20px; }
+
+        .cdb-range-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+        .cdb-range-btn {
+          border: 1px solid var(--border2);
+          background: var(--surface);
+          color: var(--muted);
+          border-radius: 999px;
+          padding: 4px 10px;
+          font-size: 11px;
+          font-family: var(--mono);
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+        .cdb-range-btn:hover { color: var(--accent); border-color: #93c5fd; background: var(--accent-lt); }
+        .cdb-range-btn.active { color: var(--accent); border-color: var(--accent); background: var(--accent-lt); }
+
+        .cdb-chart-tools { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+        .cdb-chart-expand {
+          border: 1px solid var(--border2);
+          background: var(--surface);
+          color: var(--text2);
+          border-radius: 8px;
+          width: 30px;
+          height: 30px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+        .cdb-chart-expand:hover { color: var(--accent); border-color: #93c5fd; background: var(--accent-lt); }
+
+        .cdb-chart-modal-backdrop {
+          position: fixed;
+          inset: 0;
+          background: rgba(15, 23, 42, 0.62);
+          z-index: 999;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 18px;
+        }
+        .cdb-chart-modal {
+          width: min(1100px, 96vw);
+          max-height: 92vh;
+          overflow: auto;
+          background: var(--surface);
+          border: 1px solid var(--border);
+          border-radius: 14px;
+          box-shadow: 0 20px 50px rgba(15, 23, 42, 0.35);
+        }
+        .cdb-chart-modal-head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          padding: 14px 18px;
+          border-bottom: 1px solid var(--border);
+          background: var(--surface2);
+        }
+        .cdb-chart-modal-title { font-size: 14px; font-weight: 800; font-family: var(--display); color: var(--text); }
+        .cdb-chart-modal-body { padding: 18px; }
       `}</style>
 
       <div className="cdb-wrap">
@@ -638,7 +836,28 @@ export default function CompanyDashboardPage() {
                           </div>
                         </div>
                         <div style={{ marginBottom: 20 }}>
-                          <Sparkline data={mockSpark(0)} color={delta >= 0 ? 'var(--green)' : 'var(--red)'} width={420} height={56} />
+                          <div className="cdb-chart-tools">
+                            <div className="cdb-range-row" style={{ marginBottom: 0 }}>
+                              {CHART_RANGES.map(r => (
+                                <button
+                                  key={r}
+                                  className={`cdb-range-btn ${chartRange === r ? 'active' : ''}`}
+                                  onClick={() => setChartRange(r)}
+                                >
+                                  {r}
+                                </button>
+                              ))}
+                            </div>
+                            <button className="cdb-chart-expand" title="Expand chart" onClick={() => setChartModalOpen(true)}>
+                              ⤢
+                            </button>
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            <Sparkline data={liveChartData} color={delta >= 0 ? 'var(--green)' : 'var(--red)'} width={420} height={56} pointRadius={2.5} />
+                            <span style={{ fontSize: 11, color: 'var(--muted2)' }}>
+                              Hover highlighted points to see date/time and price changes.
+                            </span>
+                          </div>
                         </div>
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, paddingTop: 18, borderTop: '1px solid var(--border)' }}>
                           {[
@@ -773,7 +992,23 @@ export default function CompanyDashboardPage() {
                         <div className={delta >= 0 ? 'delta-up' : 'delta-down'} style={{ fontSize: 13, marginTop: 4 }}>
                           {delta >= 0 ? '+' : ''}{delta.toFixed(2)}% from IPO (${init.toFixed(2)})
                         </div>
-                        <Sparkline data={mockSpark(0)} color={delta >= 0 ? 'var(--green)' : 'var(--red)'} width={140} height={40} />
+                        <div className="cdb-chart-tools" style={{ justifyContent: 'flex-end', marginTop: 8, marginBottom: 8 }}>
+                          <button className="cdb-chart-expand" title="Expand chart" onClick={() => setChartModalOpen(true)}>
+                            ⤢
+                          </button>
+                          <div className="cdb-range-row" style={{ justifyContent: 'flex-end', marginBottom: 0 }}>
+                          {CHART_RANGES.map(r => (
+                            <button
+                              key={r}
+                              className={`cdb-range-btn ${chartRange === r ? 'active' : ''}`}
+                              onClick={() => setChartRange(r)}
+                            >
+                              {r}
+                            </button>
+                          ))}
+                          </div>
+                        </div>
+                        <Sparkline data={liveChartData} color={delta >= 0 ? 'var(--green)' : 'var(--red)'} width={160} height={50} pointRadius={2.2} />
                       </div>
                     </div>
                     <div className="cdb-listing-kpis">
@@ -1031,6 +1266,48 @@ export default function CompanyDashboardPage() {
           )}
 
         </div>
+
+        {chartModalOpen && existingStock && (() => {
+          const p = prices[existingStock.ticker]
+          const curr = p ? Number(p.currentPrice) : Number(existingStock.initialPrice)
+          const init = Number(existingStock.initialPrice)
+          const delta = ((curr - init) / init) * 100
+          return (
+            <div className="cdb-chart-modal-backdrop" onClick={() => setChartModalOpen(false)}>
+              <div className="cdb-chart-modal" onClick={(e) => e.stopPropagation()}>
+                <div className="cdb-chart-modal-head">
+                  <div className="cdb-chart-modal-title">
+                    {existingStock.ticker} Price History ({chartRange})
+                  </div>
+                  <button className="cdb-btn-ghost" onClick={() => setChartModalOpen(false)}>Close</button>
+                </div>
+                <div className="cdb-chart-modal-body">
+                  <div className="cdb-range-row" style={{ marginBottom: 12 }}>
+                    {CHART_RANGES.map(r => (
+                      <button
+                        key={r}
+                        className={`cdb-range-btn ${chartRange === r ? 'active' : ''}`}
+                        onClick={() => setChartRange(r)}
+                      >
+                        {r}
+                      </button>
+                    ))}
+                  </div>
+                  <Sparkline
+                    data={liveChartData}
+                    color={delta >= 0 ? 'var(--green)' : 'var(--red)'}
+                    width={980}
+                    height={340}
+                    pointRadius={4}
+                  />
+                  <div style={{ marginTop: 10, fontSize: 12, color: 'var(--muted)' }}>
+                    Changed points are highlighted. Hover a point to view date/time, price, and exact price change.
+                  </div>
+                </div>
+              </div>
+            </div>
+          )
+        })()}
       </div>
     </>
   )
