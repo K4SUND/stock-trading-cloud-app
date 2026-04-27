@@ -258,27 +258,72 @@ jobs:
         run: kubectl apply -k k8s/overlays/staging
 
       - name: Wait for db-init Job to complete
-        run: kubectl wait --for=condition=complete job/db-init -n staging --timeout=120s
+        run: kubectl wait --for=condition=complete job/db-init -n staging --timeout=600s
 
       - name: Wait for rollouts — batch 1
         run: |
           for svc in user-service order-service payment-service; do
             echo "Rolling $svc..."
-            kubectl rollout status deployment/$svc -n staging --timeout=600s
+            kubectl rollout status deployment/$svc -n staging --timeout=600s || {
+              echo "Rollout failed for $svc in staging. Collecting diagnostics..."
+              kubectl get pods -n staging -o wide
+              kubectl describe deployment/$svc -n staging || true
+              PODS=$(kubectl get pods -n staging -l app=$svc -o jsonpath='{.items[*].metadata.name}')
+              for p in $PODS; do
+                echo "----- describe pod/$p -----"
+                kubectl describe pod/$p -n staging || true
+                echo "----- logs pod/$p -----"
+                kubectl logs $p -n staging --tail=200 || true
+                echo "----- previous logs pod/$p -----"
+                kubectl logs $p -n staging --previous --tail=200 || true
+              done
+              kubectl get events -n staging --sort-by=.metadata.creationTimestamp | tail -n 50 || true
+              exit 1
+            }
           done
 
       - name: Wait for rollouts — batch 2
         run: |
           for svc in price-service company-service matching-engine-service; do
             echo "Rolling $svc..."
-            kubectl rollout status deployment/$svc -n staging --timeout=600s
+            kubectl rollout status deployment/$svc -n staging --timeout=600s || {
+              echo "Rollout failed for $svc in staging. Collecting diagnostics..."
+              kubectl get pods -n staging -o wide
+              kubectl describe deployment/$svc -n staging || true
+              PODS=$(kubectl get pods -n staging -l app=$svc -o jsonpath='{.items[*].metadata.name}')
+              for p in $PODS; do
+                echo "----- describe pod/$p -----"
+                kubectl describe pod/$p -n staging || true
+                echo "----- logs pod/$p -----"
+                kubectl logs $p -n staging --tail=200 || true
+                echo "----- previous logs pod/$p -----"
+                kubectl logs $p -n staging --previous --tail=200 || true
+              done
+              kubectl get events -n staging --sort-by=.metadata.creationTimestamp | tail -n 50 || true
+              exit 1
+            }
           done
 
       - name: Wait for rollouts — batch 3
         run: |
           for svc in notification-service gateway-service frontend; do
             echo "Rolling $svc..."
-            kubectl rollout status deployment/$svc -n staging --timeout=600s
+            kubectl rollout status deployment/$svc -n staging --timeout=600s || {
+              echo "Rollout failed for $svc in staging. Collecting diagnostics..."
+              kubectl get pods -n staging -o wide
+              kubectl describe deployment/$svc -n staging || true
+              PODS=$(kubectl get pods -n staging -l app=$svc -o jsonpath='{.items[*].metadata.name}')
+              for p in $PODS; do
+                echo "----- describe pod/$p -----"
+                kubectl describe pod/$p -n staging || true
+                echo "----- logs pod/$p -----"
+                kubectl logs $p -n staging --tail=200 || true
+                echo "----- previous logs pod/$p -----"
+                kubectl logs $p -n staging --previous --tail=200 || true
+              done
+              kubectl get events -n staging --sort-by=.metadata.creationTimestamp | tail -n 50 || true
+              exit 1
+            }
           done
           
           
@@ -434,27 +479,72 @@ jobs:
         run: kubectl apply -k k8s/overlays/production
 
       - name: Wait for db-init Job to complete
-        run: kubectl wait --for=condition=complete job/db-init -n production --timeout=120s
+        run: kubectl wait --for=condition=complete job/db-init -n production --timeout=600s
 
       - name: Wait for rollouts — batch 1
         run: |
           for svc in user-service order-service payment-service; do
             echo "Rolling $svc..."
-            kubectl rollout status deployment/$svc -n production --timeout=600s
+            kubectl rollout status deployment/$svc -n production --timeout=600s || {
+              echo "Rollout failed for $svc in production. Collecting diagnostics..."
+              kubectl get pods -n production -o wide
+              kubectl describe deployment/$svc -n production || true
+              PODS=$(kubectl get pods -n production -l app=$svc -o jsonpath='{.items[*].metadata.name}')
+              for p in $PODS; do
+                echo "----- describe pod/$p -----"
+                kubectl describe pod/$p -n production || true
+                echo "----- logs pod/$p -----"
+                kubectl logs $p -n production --tail=200 || true
+                echo "----- previous logs pod/$p -----"
+                kubectl logs $p -n production --previous --tail=200 || true
+              done
+              kubectl get events -n production --sort-by=.metadata.creationTimestamp | tail -n 50 || true
+              exit 1
+            }
           done
 
       - name: Wait for rollouts — batch 2
         run: |
           for svc in price-service company-service matching-engine-service; do
             echo "Rolling $svc..."
-            kubectl rollout status deployment/$svc -n production --timeout=600s
+            kubectl rollout status deployment/$svc -n production --timeout=600s || {
+              echo "Rollout failed for $svc in production. Collecting diagnostics..."
+              kubectl get pods -n production -o wide
+              kubectl describe deployment/$svc -n production || true
+              PODS=$(kubectl get pods -n production -l app=$svc -o jsonpath='{.items[*].metadata.name}')
+              for p in $PODS; do
+                echo "----- describe pod/$p -----"
+                kubectl describe pod/$p -n production || true
+                echo "----- logs pod/$p -----"
+                kubectl logs $p -n production --tail=200 || true
+                echo "----- previous logs pod/$p -----"
+                kubectl logs $p -n production --previous --tail=200 || true
+              done
+              kubectl get events -n production --sort-by=.metadata.creationTimestamp | tail -n 50 || true
+              exit 1
+            }
           done
 
       - name: Wait for rollouts — batch 3
         run: |
           for svc in notification-service gateway-service frontend; do
             echo "Rolling $svc..."
-            kubectl rollout status deployment/$svc -n production --timeout=600s
+            kubectl rollout status deployment/$svc -n production --timeout=600s || {
+              echo "Rollout failed for $svc in production. Collecting diagnostics..."
+              kubectl get pods -n production -o wide
+              kubectl describe deployment/$svc -n production || true
+              PODS=$(kubectl get pods -n production -l app=$svc -o jsonpath='{.items[*].metadata.name}')
+              for p in $PODS; do
+                echo "----- describe pod/$p -----"
+                kubectl describe pod/$p -n production || true
+                echo "----- logs pod/$p -----"
+                kubectl logs $p -n production --tail=200 || true
+                echo "----- previous logs pod/$p -----"
+                kubectl logs $p -n production --previous --tail=200 || true
+              done
+              kubectl get events -n production --sort-by=.metadata.creationTimestamp | tail -n 50 || true
+              exit 1
+            }
           done
 
       - name: Post-deploy production health check
