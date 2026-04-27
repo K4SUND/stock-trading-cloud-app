@@ -236,6 +236,7 @@ jobs:
         run: |
           kubectl -n staging create secret generic app-secrets \
             --from-literal=APP_JWT_SECRET="${{ secrets.APP_JWT_SECRET }}" \
+            --from-literal=APP_INTERNAL_SERVICE_SECRET="${{ secrets.APP_INTERNAL_SERVICE_SECRET }}" \
             --from-literal=DB_PASSWORD="${{ env.DB_PASSWORD }}" \
             --from-literal=ADMIN_USERNAME="${{ secrets.ADMIN_USERNAME }}" \
             --from-literal=ADMIN_PASSWORD="${{ secrets.ADMIN_PASSWORD }}" \
@@ -257,12 +258,18 @@ jobs:
       - name: Apply manifests (Kustomize)
         run: kubectl apply -k k8s/overlays/staging
 
+      - name: Wait for core stateful services
+        run: |
+          kubectl rollout status statefulset/zookeeper -n staging --timeout=600s
+          kubectl rollout status statefulset/kafka -n staging --timeout=600s
+          kubectl rollout status statefulset/mongodb -n staging --timeout=600s
+
       - name: Wait for db-init Job to complete
         run: kubectl wait --for=condition=complete job/db-init -n staging --timeout=600s
 
       - name: Wait for rollouts — batch 1
         run: |
-          for svc in user-service order-service payment-service; do
+          for svc in user-service payment-service price-service gateway-service frontend; do
             echo "Rolling $svc..."
             kubectl rollout status deployment/$svc -n staging --timeout=600s || {
               echo "Rollout failed for $svc in staging. Collecting diagnostics..."
@@ -284,7 +291,7 @@ jobs:
 
       - name: Wait for rollouts — batch 2
         run: |
-          for svc in price-service company-service matching-engine-service; do
+          for svc in company-service notification-service matching-engine-service; do
             echo "Rolling $svc..."
             kubectl rollout status deployment/$svc -n staging --timeout=600s || {
               echo "Rollout failed for $svc in staging. Collecting diagnostics..."
@@ -306,7 +313,7 @@ jobs:
 
       - name: Wait for rollouts — batch 3
         run: |
-          for svc in notification-service gateway-service frontend; do
+          for svc in order-service; do
             echo "Rolling $svc..."
             kubectl rollout status deployment/$svc -n staging --timeout=600s || {
               echo "Rollout failed for $svc in staging. Collecting diagnostics..."
@@ -385,7 +392,7 @@ jobs:
       - name: Smoke test — auth endpoint reachable
         run: |
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            -X POST "${GATEWAY_URL}/api/users/auth/login" \
+            -X POST "${GATEWAY_URL}/api/users/login" \
             -H "Content-Type: application/json" \
             -d '{"username":"smoke","password":"test"}')
           # 401 Unauthorized means the endpoint is reachable (bad credentials expected)
@@ -477,6 +484,12 @@ jobs:
 
       - name: Apply manifests (Kustomize)
         run: kubectl apply -k k8s/overlays/production
+
+      - name: Wait for core stateful services
+        run: |
+          kubectl rollout status statefulset/zookeeper -n production --timeout=600s
+          kubectl rollout status statefulset/kafka -n production --timeout=600s
+          kubectl rollout status statefulset/mongodb -n production --timeout=600s
 
       - name: Wait for db-init Job to complete
         run: kubectl wait --for=condition=complete job/db-init -n production --timeout=600s
