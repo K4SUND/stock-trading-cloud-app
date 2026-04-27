@@ -26,18 +26,18 @@ metadata:
   name: prometheus-config
   namespace: monitoring
 data:
-  prometheus.yml:
+  prometheus.yml: |
     global:
       scrape_interval: 15s
       evaluation_interval: 15s
 
-#    alerting:
-#      alertmanagers:
-#        - static_configs:
-#            - targets: ['alertmanager:9093']
-
-#    rule_files:
-#      - /etc/prometheus/alerts.yml
+    #    alerting:
+    #      alertmanagers:
+    #        - static_configs:
+    #          - targets: ['alertmanager:9093']
+    #
+    #    rule_files:
+    #      - /etc/prometheus/alerts.yml  
 
     scrape_configs:
       # Prometheus scrapes itself
