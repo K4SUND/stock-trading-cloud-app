@@ -36,7 +36,7 @@ images:
     newName: placeholder/stock-trading-frontend
     newTag: latest
 
-# Production = 2 replicas for high availability.
+
 patches:
   - patch: |-
       - op: replace

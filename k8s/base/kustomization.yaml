@@ -4,7 +4,6 @@ kind: Kustomization
 # All resources in the base layer. Overlays (staging/production) inherit
 # these and can override namespace, replica counts, and image tags.
 resources:
-  # postgres.yaml is intentionally removed — database is AWS RDS (created by infra repo)
   # For local development with docker-compose, postgres still runs via infra/docker-compose.yml
   - db-init-job.yaml           # runs once on first deploy to create databases on RDS
   - kafka.yaml
