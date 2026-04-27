@@ -93,6 +93,35 @@ public class OrderController {
         return ResponseEntity.ok(orderProcessingService.marketTrades(ticker, range));
     }
 
+    @GetMapping("/market/status")
+    public ResponseEntity<java.util.Map<String, Object>> marketStatus() {
+        return ResponseEntity.ok(java.util.Map.of("open", orderProcessingService.isMarketOpen()));
+    }
+
+    // ── Admin endpoints ───────────────────────────────────────────────────────
+
+    @PostMapping("/admin/market/open")
+    public ResponseEntity<java.util.Map<String, Object>> openMarket() {
+        orderProcessingService.setMarketOpen(true);
+        return ResponseEntity.ok(java.util.Map.of("open", true));
+    }
+
+    @PostMapping("/admin/market/close")
+    public ResponseEntity<java.util.Map<String, Object>> closeMarket() {
+        orderProcessingService.setMarketOpen(false);
+        return ResponseEntity.ok(java.util.Map.of("open", false));
+    }
+
+    @GetMapping("/admin/users/{userId}/orders")
+    public ResponseEntity<List<OrderResponse>> adminUserOrders(@PathVariable Long userId) {
+        return ResponseEntity.ok(orderProcessingService.userOrders(userId));
+    }
+
+    @GetMapping("/admin/users/{userId}/portfolio")
+    public ResponseEntity<List<PortfolioResponse>> adminUserPortfolio(@PathVariable Long userId) {
+        return ResponseEntity.ok(orderProcessingService.portfolio(userId));
+    }
+
     // ── Internal endpoints ────────────────────────────────────────────────────
 
     // Called by company-service when a stock is listed (IPO allocation setup)

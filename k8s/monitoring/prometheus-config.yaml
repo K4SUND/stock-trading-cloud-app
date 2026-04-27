@@ -31,13 +31,13 @@ data:
       scrape_interval: 15s
       evaluation_interval: 15s
 
-    alerting:
-      alertmanagers:
-        - static_configs:
-            - targets: ['alertmanager:9093']
-
-    rule_files:
-      - /etc/prometheus/alerts.yml
+    #    alerting:
+    #      alertmanagers:
+    #        - static_configs:
+    #          - targets: ['alertmanager:9093']
+    #
+    #    rule_files:
+    #      - /etc/prometheus/alerts.yml  
 
     scrape_configs:
       # Prometheus scrapes itself
@@ -85,54 +85,54 @@ data:
         static_configs:
           - targets: ['matching-engine-service.production:8086']
 
-  alerts.yml: |
-    groups:
-      - name: stock-trading-alerts
-        rules:
-
-          # Alert if any service pod is down
-          - alert: ServiceDown
-            expr: up == 0
-            for: 1m
-            labels:
-              severity: critical
-            annotations:
-              summary: "Service {{ $labels.job }} is down"
-              description: "{{ $labels.instance }} has been unreachable for > 1 minute."
-
-          # Alert if gateway HTTP error rate > 5%
-          - alert: HighErrorRate
-            expr: |
-              rate(http_server_requests_seconds_count{status=~"5..",job="gateway-service"}[5m])
-              / rate(http_server_requests_seconds_count{job="gateway-service"}[5m]) > 0.05
-            for: 2m
-            labels:
-              severity: warning
-            annotations:
-              summary: "High HTTP 5xx error rate on gateway"
-              description: "Error rate is {{ humanizePercentage $value }} over the last 5 minutes."
-
-          # Alert if p99 latency > 2s
-          - alert: HighLatency
-            expr: |
-              histogram_quantile(0.99,
-                rate(http_server_requests_seconds_bucket{job="gateway-service"}[5m])
-              ) > 2
-            for: 5m
-            labels:
-              severity: warning
-            annotations:
-              summary: "High p99 latency on gateway"
-              description: "p99 latency is {{ $value | humanizeDuration }}."
-
-          # Alert if JVM heap > 80%
-          - alert: HighMemoryUsage
-            expr: |
-              jvm_memory_used_bytes{area="heap"}
-              / jvm_memory_max_bytes{area="heap"} > 0.80
-            for: 5m
-            labels:
-              severity: warning
-            annotations:
-              summary: "High JVM heap usage in {{ $labels.job }}"
-              description: "Heap is at {{ humanizePercentage $value }}."
+#  alerts.yml: |
+##    groups:
+##      - name: stock-trading-alerts
+##        rules:
+##
+##          # Alert if any service pod is down
+##          - alert: ServiceDown
+##            expr: up == 0
+##            for: 1m
+##            labels:
+##              severity: critical
+##            annotations:
+##              summary: "Service {{ $labels.job }} is down"
+##              description: "{{ $labels.instance }} has been unreachable for > 1 minute."
+##
+##          # Alert if gateway HTTP error rate > 5%
+##          - alert: HighErrorRate
+##            expr: |
+##              rate(http_server_requests_seconds_count{status=~"5..",job="gateway-service"}[5m])
+##              / rate(http_server_requests_seconds_count{job="gateway-service"}[5m]) > 0.05
+##            for: 2m
+##            labels:
+##              severity: warning
+##            annotations:
+##              summary: "High HTTP 5xx error rate on gateway"
+##              description: "Error rate is {{ humanizePercentage $value }} over the last 5 minutes."
+##
+##          # Alert if p99 latency > 2s
+##          - alert: HighLatency
+##            expr: |
+##              histogram_quantile(0.99,
+##                rate(http_server_requests_seconds_bucket{job="gateway-service"}[5m])
+##              ) > 2
+##            for: 5m
+##            labels:
+##              severity: warning
+##            annotations:
+##              summary: "High p99 latency on gateway"
+##              description: "p99 latency is {{ $value | humanizeDuration }}."
+##
+##          # Alert if JVM heap > 80%
+##          - alert: HighMemoryUsage
+##            expr: |
+##              jvm_memory_used_bytes{area="heap"}
+##              / jvm_memory_max_bytes{area="heap"} > 0.80
+##            for: 5m
+##            labels:
+##              severity: warning
+##            annotations:
+##              summary: "High JVM heap usage in {{ $labels.job }}"
+##              description: "Heap is at {{ humanizePercentage $value }}."

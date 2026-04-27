@@ -9,6 +9,7 @@ import com.prototype.orderservice.events.TradeExecutedEvent;
 import com.prototype.orderservice.model.*;
 import com.prototype.orderservice.repository.IpoAllocationRepository;
 import com.prototype.orderservice.repository.IpoPurchaseRepository;
+import com.prototype.orderservice.repository.MarketStatusRepository;
 import com.prototype.orderservice.repository.OrderRepository;
 import com.prototype.orderservice.repository.PortfolioRepository;
 import com.prototype.orderservice.repository.TradeRepository;
@@ -38,6 +39,7 @@ public class OrderProcessingService {
     private final IpoPurchaseRepository   ipoPurchaseRepository;
     private final KafkaEventPublisher     kafkaPublisher;
     private final RestTemplate            restTemplate;
+    private final MarketStatusRepository  marketStatusRepository;
     private final ObjectMapper            objectMapper = new ObjectMapper();
 
     @Value("${payment-service.url:http://localhost:8083}")
@@ -49,7 +51,8 @@ public class OrderProcessingService {
                                   IpoAllocationRepository ipoAllocationRepository,
                                   IpoPurchaseRepository ipoPurchaseRepository,
                                   KafkaEventPublisher kafkaPublisher,
-                                  RestTemplate restTemplate) {
+                                  RestTemplate restTemplate,
+                                  MarketStatusRepository marketStatusRepository) {
         this.orderRepository         = orderRepository;
         this.portfolioRepository     = portfolioRepository;
         this.tradeRepository         = tradeRepository;
@@ -57,11 +60,29 @@ public class OrderProcessingService {
         this.ipoPurchaseRepository   = ipoPurchaseRepository;
         this.kafkaPublisher          = kafkaPublisher;
         this.restTemplate            = restTemplate;
+        this.marketStatusRepository  = marketStatusRepository;
+    }
+
+    public boolean isMarketOpen() {
+        return marketStatusRepository.findById(1L).map(s -> s.isOpen()).orElse(true);
+    }
+
+    @Transactional
+    public void setMarketOpen(boolean open) {
+        com.prototype.orderservice.model.MarketStatus status =
+            marketStatusRepository.findById(1L)
+                .orElseGet(() -> new com.prototype.orderservice.model.MarketStatus());
+        status.setOpen(open);
+        marketStatusRepository.save(status);
     }
 
     // ── Place a secondary market order (enters matching engine) ─────────────
     @Transactional
     public OrderResponse createOrder(Long userId, CreateOrderRequest request) {
+        if (!isMarketOpen()) {
+            throw new IllegalStateException("Market is currently closed. Trading is not allowed.");
+        }
+
         OrderType type = OrderType.valueOf(request.type().toUpperCase());
         OrderMode mode = request.orderMode() != null
             ? OrderMode.valueOf(request.orderMode().toUpperCase()) : OrderMode.LIMIT;

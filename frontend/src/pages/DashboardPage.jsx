@@ -161,6 +161,7 @@ export default function DashboardPage() {
   const [insightRange, setInsightRange] = useState('1W')
   const [insightTrades, setInsightTrades] = useState([])
   const [insightLoading, setInsightLoading] = useState(false)
+  const [marketOpen, setMarketOpen]     = useState(null)
   const prevPricesRef  = useRef({})
   const tradeMsgTimer  = useRef(null)
 
@@ -206,13 +207,16 @@ export default function DashboardPage() {
     } catch { setInsightTrades([]) }
     finally { setInsightLoading(false) }
   }
+  async function loadMarketStatus() {
+    try { const r = await orderApi.get('/market/status'); setMarketOpen(r.data.open) } catch {}
+  }
   async function loadOrderBook(ticker) {
     try { const r = await bookApi.get(`/${ticker}`); setOrderBook(r.data) }
     catch { setOrderBook({ ticker, bids: [], asks: [] }) }
   }
 
   function loadAll() {
-    loadStocks(); loadPortfolio(); loadOrders(); loadTrades(); loadIpoPurchases(); loadBalance(); loadMarketTrades(); loadCompanyStockMeta()
+    loadStocks(); loadPortfolio(); loadOrders(); loadTrades(); loadIpoPurchases(); loadBalance(); loadMarketTrades(); loadCompanyStockMeta(); loadMarketStatus()
   }
 
   useEffect(() => { loadAll(); loadOrderBook(tradeForm.stockTicker) }, [])
@@ -415,8 +419,23 @@ export default function DashboardPage() {
             <div className="db-kpi-value">{openCount}</div>
           </div>
         </div>
+        {marketOpen !== null && (
+          <div className={`db-kpi db-kpi-status ${marketOpen ? 'db-kpi-live' : 'db-kpi-offline'}`}>
+            <span className={`db-live-dot ${marketOpen ? 'dot-on' : 'dot-off'}`} />
+            <div>
+              <div className="db-kpi-label">Market</div>
+              <div className="db-kpi-value" style={{ fontSize: 16 }}>{marketOpen ? 'Open' : 'Closed'}</div>
+            </div>
+          </div>
+        )}
 
       </div>
+
+      {!marketOpen && marketOpen !== null && (
+        <div className="alert alert-error" style={{ margin: 0 }}>
+          The market is currently closed. New orders cannot be placed.
+        </div>
+      )}
 
       {/* ── Main Two-Column Layout ────────────────────────────────────────── */}
       <div className="db-main-grid">

@@ -29,30 +29,30 @@ images:
   - name: stock-trading-matching-engine-service
     newName: placeholder/stock-trading-matching-engine-service
     newTag: latest
+  - name: stock-trading-notification-service
+    newName: placeholder/stock-trading-notification-service
+    newTag: latest
   - name: stock-trading-frontend
     newName: placeholder/stock-trading-frontend
     newTag: latest
 
 # Production = 2 replicas for high availability.
-# gateway-service and user-service get 3 (they handle all traffic and auth).
 patches:
   - patch: |-
       - op: replace
         path: /spec/replicas
-        value: 2
+        value: 1
     target:
       kind: Deployment
+
+  # Zero-downtime rolling update
   - patch: |-
-      - op: replace
-        path: /spec/replicas
-        value: 3
+      - op: add
+        path: /spec/strategy
+        value:
+          type: RollingUpdate
+          rollingUpdate:
+            maxSurge: 1
+            maxUnavailable: 0
     target:
       kind: Deployment
-      name: gateway-service
-  - patch: |-
-      - op: replace
-        path: /spec/replicas
-        value: 3
-    target:
-      kind: Deployment
-      name: user-service

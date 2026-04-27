@@ -1,3 +1,5 @@
+# cloud project
+
 name: Stock Trading CI/CD Pipeline
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -45,6 +47,7 @@ jobs:
           - company-service
           - gateway-service
           - matching-engine-service
+          - notification-service
     steps:
       - uses: actions/checkout@v4
         with:
@@ -89,6 +92,7 @@ jobs:
           - company-service
           - gateway-service
           - matching-engine-service
+          - notification-service
     steps:
       - uses: actions/checkout@v4
 
@@ -140,6 +144,7 @@ jobs:
           - company-service
           - gateway-service
           - matching-engine-service
+          - notification-service
           - frontend
     steps:
       - uses: actions/checkout@v4
@@ -186,80 +191,96 @@ jobs:
   # NO kubeconfig secret needed — pipeline fetches cluster info from SSM
   # NO DB_PASSWORD secret needed — pipeline fetches it from SSM
   # ═══════════════════════════════════════════════════════════════════════
-  deploy-staging:
-    name: Deploy → Staging
-    runs-on: ubuntu-latest
-    needs: [docker]
-    environment: staging
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up kubectl
-        uses: azure/setup-kubectl@v4
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
-      - name: Read cluster info and RDS values from SSM
-        run: |
-          CLUSTER=$(aws ssm get-parameter --name "/stock-trading/cluster-name" --query "Parameter.Value" --output text)
-          RDS_HOST=$(aws ssm get-parameter --name "/stock-trading/rds-host" --query "Parameter.Value" --output text)
-          DB_PASSWORD=$(aws ssm get-parameter --name "/stock-trading/rds-password" --with-decryption --query "Parameter.Value" --output text)
-          echo "CLUSTER=${CLUSTER}" >> $GITHUB_ENV
-          echo "RDS_HOST=${RDS_HOST}" >> $GITHUB_ENV
-          echo "DB_PASSWORD=${DB_PASSWORD}" >> $GITHUB_ENV
-          echo "Cluster: ${CLUSTER} | RDS: ${RDS_HOST}"
-
-      - name: Configure kubectl (automatic — no kubeconfig secret needed)
-        run: aws eks update-kubeconfig --name ${{ env.CLUSTER }} --region ${{ secrets.AWS_REGION }}
-
-      - name: Apply namespaces
-        run: kubectl apply -f k8s/namespaces.yaml
-
-      - name: Create db-config ConfigMap (RDS hostname for pods)
-        run: |
-          kubectl -n staging create configmap db-config \
-            --from-literal=RDS_HOST="${{ env.RDS_HOST }}" \
-            --dry-run=client -o yaml | kubectl apply -f -
-
-      - name: Create app-secrets
-        run: |
-          kubectl -n staging create secret generic app-secrets \
-            --from-literal=APP_JWT_SECRET="${{ secrets.APP_JWT_SECRET }}" \
-            --from-literal=DB_PASSWORD="${{ env.DB_PASSWORD }}" \
-            --from-literal=ADMIN_USERNAME="${{ secrets.ADMIN_USERNAME }}" \
-            --from-literal=ADMIN_PASSWORD="${{ secrets.ADMIN_PASSWORD }}" \
-            --dry-run=client -o yaml | kubectl apply -f -
-
-      - name: Install Kustomize
-        run: |
-          curl -sLO https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.4.1/kustomize_v5.4.1_linux_amd64.tar.gz
-          tar -xzf kustomize_v5.4.1_linux_amd64.tar.gz
-          chmod +x kustomize && sudo mv kustomize /usr/local/bin/
-
-      - name: Stamp image SHA tags (staging overlay)
-        run: |
-          cd k8s/overlays/staging
-          for svc in user-service order-service payment-service price-service company-service gateway-service matching-engine-service frontend; do
-            kustomize edit set image stock-trading-${svc}=${{ env.IMAGE_BASE }}-${svc}:${{ env.IMAGE_TAG }}
-          done
-
-      - name: Apply manifests (Kustomize)
-        run: kubectl apply -k k8s/overlays/staging
-
-      - name: Wait for db-init Job to complete
-        run: kubectl wait --for=condition=complete job/db-init -n staging --timeout=120s
-
-      - name: Wait for all rollouts
-        run: |
-          for svc in user-service order-service payment-service price-service company-service gateway-service matching-engine-service frontend; do
-            echo "Waiting for $svc..."
-            kubectl rollout status deployment/$svc -n staging --timeout=180s
-          done
+#  deploy-staging:
+#    name: Deploy → Staging
+#    runs-on: ubuntu-latest
+#    needs: [docker]
+#    environment: staging
+#    steps:
+#      - uses: actions/checkout@v4
+#
+#      - name: Set up kubectl
+#        uses: azure/setup-kubectl@v4
+#
+#      - name: Configure AWS credentials
+#        uses: aws-actions/configure-aws-credentials@v4
+#        with:
+#          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+#          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+#          aws-region: ${{ secrets.AWS_REGION }}
+#
+#      - name: Read cluster info and RDS values from SSM
+#        run: |
+#          CLUSTER=$(aws ssm get-parameter --name "/stock-trading/cluster-name" --query "Parameter.Value" --output text)
+#          RDS_HOST=$(aws ssm get-parameter --name "/stock-trading/rds-host" --query "Parameter.Value" --output text)
+#          DB_PASSWORD=$(aws ssm get-parameter --name "/stock-trading/rds-password" --with-decryption --query "Parameter.Value" --output text)
+#          echo "CLUSTER=${CLUSTER}" >> $GITHUB_ENV
+#          echo "RDS_HOST=${RDS_HOST}" >> $GITHUB_ENV
+#          echo "DB_PASSWORD=${DB_PASSWORD}" >> $GITHUB_ENV
+#          echo "Cluster: ${CLUSTER} | RDS: ${RDS_HOST}"
+#
+#      - name: Configure kubectl (automatic — no kubeconfig secret needed)
+#        run: aws eks update-kubeconfig --name ${{ env.CLUSTER }} --region ${{ secrets.AWS_REGION }}
+#
+#      - name: Apply namespaces
+#        run: kubectl apply -f k8s/namespaces.yaml
+#
+#      - name: Create db-config ConfigMap (RDS hostname for pods)
+#        run: |
+#          kubectl -n staging create configmap db-config \
+#            --from-literal=RDS_HOST="${{ env.RDS_HOST }}" \
+#            --dry-run=client -o yaml | kubectl apply -f -
+#
+#      - name: Create app-secrets
+#        run: |
+#          kubectl -n staging create secret generic app-secrets \
+#            --from-literal=APP_JWT_SECRET="${{ secrets.APP_JWT_SECRET }}" \
+#            --from-literal=DB_PASSWORD="${{ env.DB_PASSWORD }}" \
+#            --from-literal=ADMIN_USERNAME="${{ secrets.ADMIN_USERNAME }}" \
+#            --from-literal=ADMIN_PASSWORD="${{ secrets.ADMIN_PASSWORD }}" \
+#            --dry-run=client -o yaml | kubectl apply -f -
+#
+#      - name: Install Kustomize
+#        run: |
+#          curl -sLO https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.4.1/kustomize_v5.4.1_linux_amd64.tar.gz
+#          tar -xzf kustomize_v5.4.1_linux_amd64.tar.gz
+#          chmod +x kustomize && sudo mv kustomize /usr/local/bin/
+#
+#      - name: Stamp image SHA tags (staging overlay)
+#        run: |
+#          cd k8s/overlays/staging
+#          for svc in user-service order-service payment-service price-service company-service gateway-service matching-engine-service notification-service frontend; do
+#            kustomize edit set image stock-trading-${svc}=${{ env.IMAGE_BASE }}-${svc}:${{ env.IMAGE_TAG }}
+#          done
+#
+#      - name: Apply manifests (Kustomize)
+#        run: kubectl apply -k k8s/overlays/staging
+#
+#      - name: Wait for db-init Job to complete
+#        run: kubectl wait --for=condition=complete job/db-init -n staging --timeout=120s
+#
+#      - name: Wait for rollouts — batch 1
+#        run: |
+#          for svc in user-service order-service payment-service; do
+#            echo "Rolling $svc..."
+#            kubectl rollout status deployment/$svc -n staging --timeout=600s
+#          done
+#
+#      - name: Wait for rollouts — batch 2
+#        run: |
+#          for svc in price-service company-service matching-engine-service; do
+#            echo "Rolling $svc..."
+#            kubectl rollout status deployment/$svc -n staging --timeout=600s
+#          done
+#
+#      - name: Wait for rollouts — batch 3
+#        run: |
+#          for svc in notification-service gateway-service frontend; do
+#            echo "Rolling $svc..."
+#            kubectl rollout status deployment/$svc -n staging --timeout=600s
+#          done
+          
+          
 
   # ═══════════════════════════════════════════════════════════════════════
   # STAGE 4: Smoke Tests on Staging
@@ -268,55 +289,63 @@ jobs:
   # a human to approve production. Tests hit public API endpoints
   # through the gateway (the Load Balancer entry point).
   # ═══════════════════════════════════════════════════════════════════════
-  smoke-test:
-    name: Smoke Tests (Staging)
-    runs-on: ubuntu-latest
-    needs: [deploy-staging]
-    steps:
-      - name: Set up kubectl
-        uses: azure/setup-kubectl@v4
-
-      - name: Configure kubeconfig
-        run: |
-          mkdir -p ~/.kube
-          echo "${{ secrets.KUBE_CONFIG_STAGING }}" | base64 -d > ~/.kube/config
-
-      - name: Resolve staging gateway IP
-        run: |
-          GATEWAY_IP=$(kubectl get svc gateway-service -n staging \
-            -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-          echo "GATEWAY_URL=http://${GATEWAY_IP}:8080" >> $GITHUB_ENV
-          echo "Gateway LoadBalancer IP: ${GATEWAY_IP}"
-
-      - name: Health check — gateway (/actuator/health)
-        run: |
-          for i in {1..8}; do
-            STATUS=$(curl -sf -o /dev/null -w "%{http_code}" "${GATEWAY_URL}/actuator/health" 2>/dev/null || echo "000")
-            if [ "$STATUS" = "200" ]; then
-              echo "Gateway healthy (attempt $i)"
-              break
-            fi
-            echo "Attempt $i/8 — status=$STATUS, retrying in 15s..."
-            sleep 15
-          done
-          [ "$STATUS" = "200" ] || { echo "Gateway health check failed"; exit 1; }
-
-      - name: Smoke test — public price endpoint
-        run: |
-          curl -sf "${GATEWAY_URL}/api/prices/" \
-            && echo "Price service OK" \
-            || echo "Price service returned non-200 (empty DB is OK)"
-
-      - name: Smoke test — auth endpoint reachable
-        run: |
-          STATUS=$(curl -sf -o /dev/null -w "%{http_code}" \
-            -X POST "${GATEWAY_URL}/api/users/auth/login" \
-            -H "Content-Type: application/json" \
-            -d '{"username":"smoke","password":"test"}')
-          # 401 Unauthorized means the endpoint is reachable (bad credentials expected)
-          [ "$STATUS" = "401" ] || [ "$STATUS" = "400" ] \
-            && echo "Auth endpoint reachable (got $STATUS as expected)" \
-            || { echo "Auth endpoint unreachable (got $STATUS)"; exit 1; }
+#  smoke-test:
+#    name: Smoke Tests (Staging)
+#    runs-on: ubuntu-latest
+#    needs: [deploy-staging]
+#    steps:
+#      - name: Set up kubectl
+#        uses: azure/setup-kubectl@v4
+#
+#      - name: Configure AWS credentials
+#        uses: aws-actions/configure-aws-credentials@v4
+#        with:
+#          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+#          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+#          aws-region: ${{ secrets.AWS_REGION }}
+#
+#      - name: Configure kubectl
+#        run: |
+#          CLUSTER=$(aws ssm get-parameter --name "/stock-trading/cluster-name" --query "Parameter.Value" --output text)
+#          aws eks update-kubeconfig --name $CLUSTER --region ${{ secrets.AWS_REGION }}
+#
+#      - name: Resolve staging gateway hostname
+#        run: |
+#          # AWS ELB gives a hostname, not an IP
+#          GATEWAY_HOST=$(kubectl get svc gateway-service -n staging \
+#            -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+#          echo "GATEWAY_URL=http://${GATEWAY_HOST}:8080" >> $GITHUB_ENV
+#          echo "Gateway LoadBalancer: ${GATEWAY_HOST}"
+#
+#      - name: Health check — gateway (/actuator/health)
+#        run: |
+#          for i in {1..8}; do
+#            STATUS=$(curl -sf -o /dev/null -w "%{http_code}" "${GATEWAY_URL}/actuator/health" 2>/dev/null || echo "000")
+#            if [ "$STATUS" = "200" ]; then
+#              echo "Gateway healthy (attempt $i)"
+#              break
+#            fi
+#            echo "Attempt $i/8 — status=$STATUS, retrying in 15s..."
+#            sleep 15
+#          done
+#          [ "$STATUS" = "200" ] || { echo "Gateway health check failed"; exit 1; }
+#
+#      - name: Smoke test — public price endpoint
+#        run: |
+#          curl -sf "${GATEWAY_URL}/api/prices/" \
+#            && echo "Price service OK" \
+#            || echo "Price service returned non-200 (empty DB is OK)"
+#
+#      - name: Smoke test — auth endpoint reachable
+#        run: |
+#          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+#            -X POST "${GATEWAY_URL}/api/users/auth/login" \
+#            -H "Content-Type: application/json" \
+#            -d '{"username":"smoke","password":"test"}')
+#          # 401 Unauthorized means the endpoint is reachable (bad credentials expected)
+#          [ "$STATUS" = "401" ] || [ "$STATUS" = "400" ] \
+#            && echo "Auth endpoint reachable (got $STATUS as expected)" \
+#            || { echo "Auth endpoint unreachable (got $STATUS)"; exit 1; }
 
   # ═══════════════════════════════════════════════════════════════════════
   # STAGE 5: Deploy to Production
@@ -340,7 +369,8 @@ jobs:
   deploy-production:
     name: Deploy → Production
     runs-on: ubuntu-latest
-    needs: [smoke-test]
+#    needs: [smoke-test]
+    needs: [docker]
     environment: production
     steps:
       - uses: actions/checkout@v4
@@ -355,22 +385,17 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Fetch RDS values from SSM
+      - name: Fetch cluster info and RDS values from SSM
         run: |
-          RDS_HOST=$(aws ssm get-parameter \
-            --name "/stock-trading/production/rds-host" \
-            --query "Parameter.Value" --output text)
-          DB_PASSWORD=$(aws ssm get-parameter \
-            --name "/stock-trading/production/rds-password" \
-            --with-decryption \
-            --query "Parameter.Value" --output text)
+          CLUSTER=$(aws ssm get-parameter --name "/stock-trading/cluster-name" --query "Parameter.Value" --output text)
+          RDS_HOST=$(aws ssm get-parameter --name "/stock-trading/rds-host" --query "Parameter.Value" --output text)
+          DB_PASSWORD=$(aws ssm get-parameter --name "/stock-trading/rds-password" --with-decryption --query "Parameter.Value" --output text)
+          echo "CLUSTER=${CLUSTER}" >> $GITHUB_ENV
           echo "RDS_HOST=${RDS_HOST}" >> $GITHUB_ENV
           echo "DB_PASSWORD=${DB_PASSWORD}" >> $GITHUB_ENV
 
-      - name: Configure kubeconfig
-        run: |
-          mkdir -p ~/.kube
-          echo "${{ secrets.KUBE_CONFIG_PRODUCTION }}" | base64 -d > ~/.kube/config
+      - name: Configure kubectl
+        run: aws eks update-kubeconfig --name ${{ env.CLUSTER }} --region ${{ secrets.AWS_REGION }}
 
       - name: Apply namespaces
         run: kubectl apply -f k8s/namespaces.yaml
@@ -395,11 +420,27 @@ jobs:
           curl -sLO https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.4.1/kustomize_v5.4.1_linux_amd64.tar.gz
           tar -xzf kustomize_v5.4.1_linux_amd64.tar.gz
           chmod +x kustomize && sudo mv kustomize /usr/local/bin/
+          
+          
+      # Snapshot the currently-live image tags BEFORE we overwrite them.
+      # These are saved to $GITHUB_ENV and used by the rollback step if
+      # smoke tests fail after this deployment.
+      - name: Snapshot current image tags (for rollback)
+        id: snapshot
+        run: |
+          PREV_TAGS=""
+          for svc in user-service order-service payment-service price-service company-service gateway-service matching-engine-service notification-service frontend; do
+            TAG=$(kubectl get deployment $svc -n production \
+              -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null \
+              || echo "${{ env.IMAGE_BASE }}-${svc}:latest")
+            PREV_TAGS="${PREV_TAGS}${svc}=${TAG},"
+          done
+          echo "prev_tags=${PREV_TAGS}" >> $GITHUB_OUTPUT    
 
       - name: Stamp image SHA tags (production overlay)
         run: |
           cd k8s/overlays/production
-          for svc in user-service order-service payment-service price-service company-service gateway-service matching-engine-service frontend; do
+          for svc in user-service order-service payment-service price-service company-service gateway-service matching-engine-service notification-service frontend; do
             kustomize edit set image stock-trading-${svc}=${{ env.IMAGE_BASE }}-${svc}:${{ env.IMAGE_TAG }}
           done
 
@@ -410,19 +451,114 @@ jobs:
       - name: Wait for db-init Job to complete
         run: kubectl wait --for=condition=complete job/db-init -n production --timeout=120s
 
-      - name: Wait for all rollouts
+      - name: Wait for rollouts — batch 1
         run: |
-          for svc in user-service order-service payment-service price-service company-service gateway-service matching-engine-service frontend; do
-            echo "Waiting for $svc..."
-            kubectl rollout status deployment/$svc -n production --timeout=300s
+          for svc in user-service order-service payment-service; do
+            echo "Rolling $svc..."
+            kubectl rollout status deployment/$svc -n production --timeout=600s
           done
 
-      - name: Post-deploy production health check
+      - name: Wait for rollouts — batch 2
         run: |
-          GATEWAY_IP=$(kubectl get svc gateway-service -n production \
-            -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-          curl -sf "http://${GATEWAY_IP}:8080/actuator/health"
-          echo "Production deployment complete"
+          for svc in price-service company-service matching-engine-service; do
+            echo "Rolling $svc..."
+            kubectl rollout status deployment/$svc -n production --timeout=600s
+          done
+
+      - name: Wait for rollouts — batch 3
+        run: |
+          for svc in notification-service gateway-service frontend; do
+            echo "Rolling $svc..."
+            kubectl rollout status deployment/$svc -n production --timeout=600s
+          done
+
+#      - name: Post-deploy production health check
+#        run: |
+#          # AWS ELB gives a hostname, not an IP
+#          GATEWAY_HOST=$(kubectl get svc gateway-service -n production \
+#            -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+#          curl -sf "http://${GATEWAY_HOST}:8080/actuator/health"
+#          echo "Production deployment complete"
+#
+#      - name: Deploy monitoring stack
+#        run: kubectl apply -f k8s/monitoring/
+
+  smoke-test:
+    name: Smoke Tests (Production)
+    runs-on: ubuntu-latest
+    needs: [ deploy-production ]
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Configure kubectl
+        run: |
+          CLUSTER=$(aws ssm get-parameter --name "/stock-trading/cluster-name" --query "Parameter.Value" --output text)
+          aws eks update-kubeconfig --name $CLUSTER --region ${{ secrets.AWS_REGION }}
+
+      - name: Resolve production gateway hostname
+        run: |
+          GATEWAY_HOST=$(kubectl get svc gateway-service -n production \
+            -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+          echo "GATEWAY_URL=http://${GATEWAY_HOST}:8080" >> $GITHUB_ENV
+          echo "Gateway LoadBalancer: ${GATEWAY_HOST}"
+
+      - name: Health check — gateway (/actuator/health)
+        run: |
+          for i in {1..8}; do
+            STATUS=$(curl -sf -o /dev/null -w "%{http_code}" "${GATEWAY_URL}/actuator/health" 2>/dev/null || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              echo "Gateway healthy (attempt $i)"
+              break
+            fi
+            echo "Attempt $i/8 — status=$STATUS, retrying in 15s..."
+            sleep 15
+          done
+          [ "$STATUS" = "200" ] || { echo "Gateway health check failed"; exit 1; }
+
+      - name: Smoke test — public price endpoint
+        run: |
+          curl -sf "${GATEWAY_URL}/api/prices/" \
+            && echo "Price service OK" \
+            || echo "Price service returned non-200 (empty DB is OK)"
+
+      - name: Smoke test — auth endpoint reachable
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST "${GATEWAY_URL}/api/users/auth/login" \
+            -H "Content-Type: application/json" \
+            -d '{"username":"smoke","password":"test"}')
+          [ "$STATUS" = "401" ] || [ "$STATUS" = "400" ] \
+            && echo "Auth endpoint reachable (got $STATUS as expected)" \
+            || { echo "Auth endpoint unreachable (got $STATUS)"; exit 1; }
 
       - name: Deploy monitoring stack
         run: kubectl apply -f k8s/monitoring/
+
+      - name: Rollback production on smoke test failure
+        if: failure()
+        run: |
+          echo "Smoke tests failed — rolling back production deployments..."
+            
+          IFS=',' read -ra ENTRIES <<< "${{ needs.deploy-production.outputs.prev_tags }}"
+          for entry in "${ENTRIES[@]}"; do
+            [ -z "$entry" ] && continue
+            SVC="${entry%%=*}"
+            IMG="${entry##*=}"
+            echo "Rolling back $SVC → $IMG"
+            kubectl set image deployment/$SVC ${SVC}=${IMG} -n production
+            kubectl rollout status deployment/$SVC -n production --timeout=300s
+          done
+            
+          echo "Rollback complete. Production is back to the previous release."
+          exit 1   # keep the pipeline red so the failure is visible

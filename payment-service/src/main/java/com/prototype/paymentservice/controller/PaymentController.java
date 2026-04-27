@@ -30,6 +30,11 @@ public class PaymentController {
         return ResponseEntity.ok(walletService.getWallet(userId));
     }
 
+    @GetMapping("/admin/users/{userId}/wallet")
+    public ResponseEntity<WalletResponse> adminWallet(@PathVariable Long userId) {
+        return ResponseEntity.ok(walletService.getWallet(userId));
+    }
+
     // Called by order-service synchronously during IPO purchase — no JWT needed
     @PostMapping("/internal/deduct")
     public ResponseEntity<Void> internalDeduct(@RequestBody DeductRequest request) {

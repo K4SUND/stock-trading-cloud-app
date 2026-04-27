@@ -27,14 +27,14 @@ public class UserController {
     public ResponseEntity<UserSummary> me(Authentication auth) {
         Long userId = (Long) auth.getPrincipal();
         return userRepository.findById(userId)
-                .map(u -> ResponseEntity.ok(new UserSummary(u.getId(), u.getUsername(), u.getRole())))
+                .map(u -> ResponseEntity.ok(new UserSummary(u.getId(), u.getUsername(), u.getRole(), u.isActive())))
                 .orElse(ResponseEntity.notFound().build());
     }
 
     @GetMapping("/batch")
     public ResponseEntity<List<UserSummary>> batchUsers(@RequestParam List<Long> ids) {
         List<UserSummary> users = userRepository.findAllById(ids).stream()
-                .map(u -> new UserSummary(u.getId(), u.getUsername(), u.getRole()))
+                .map(u -> new UserSummary(u.getId(), u.getUsername(), u.getRole(), u.isActive()))
                 .toList();
         return ResponseEntity.ok(users);
     }
@@ -42,7 +42,7 @@ public class UserController {
     @GetMapping("/admin/users")
     public ResponseEntity<List<UserSummary>> allUsers() {
         List<UserSummary> users = userRepository.findAll().stream()
-                .map(u -> new UserSummary(u.getId(), u.getUsername(), u.getRole()))
+                .map(u -> new UserSummary(u.getId(), u.getUsername(), u.getRole(), u.isActive()))
                 .toList();
         return ResponseEntity.ok(users);
     }
@@ -58,7 +58,21 @@ public class UserController {
         user.setRole(newRole);
         userRepository.save(user);
         log.info("Admin changed role userId={} newRole={}", id, newRole);
-        return ResponseEntity.ok(new UserSummary(user.getId(), user.getUsername(), user.getRole()));
+        return ResponseEntity.ok(new UserSummary(user.getId(), user.getUsername(), user.getRole(), user.isActive()));
+    }
+
+    @PatchMapping("/admin/users/{id}/status")
+    public ResponseEntity<UserSummary> toggleStatus(@PathVariable Long id, Authentication auth) {
+        Long requesterId = (Long) auth.getPrincipal();
+        if (requesterId.equals(id)) {
+            throw new IllegalArgumentException("Admin cannot deactivate their own account");
+        }
+        UserAccount user = userRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        user.setActive(!user.isActive());
+        userRepository.save(user);
+        log.info("Admin toggled status userId={} active={}", id, user.isActive());
+        return ResponseEntity.ok(new UserSummary(user.getId(), user.getUsername(), user.getRole(), user.isActive()));
     }
 
     @DeleteMapping("/admin/users/{id}")

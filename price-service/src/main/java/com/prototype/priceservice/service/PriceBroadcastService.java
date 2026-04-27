@@ -1,5 +1,6 @@
 package com.prototype.priceservice.service;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.prototype.priceservice.dto.StockPriceResponse;
 import com.prototype.priceservice.events.TradeExecutedEvent;
@@ -8,12 +9,14 @@ import com.prototype.priceservice.repository.StockPriceRepository;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -24,8 +27,13 @@ public class PriceBroadcastService {
     private static final Logger log = LoggerFactory.getLogger(PriceBroadcastService.class);
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss");
 
+    private static final String CACHE_ALL    = "prices:all";
+    private static final String CACHE_PREFIX = "price:";
+    private static final Duration CACHE_TTL  = Duration.ofMinutes(5);
+
     private final StockPriceRepository  stockPriceRepository;
     private final SimpMessagingTemplate messagingTemplate;
+    private final StringRedisTemplate   redisTemplate;
     private final ObjectMapper          objectMapper = new ObjectMapper();
 
     private final ConcurrentHashMap<String, TradeSnapshot> tradeCache = new ConcurrentHashMap<>();
@@ -33,9 +41,11 @@ public class PriceBroadcastService {
     private record TradeSnapshot(BigDecimal price, BigDecimal value, String timestamp) {}
 
     public PriceBroadcastService(StockPriceRepository stockPriceRepository,
-                                 SimpMessagingTemplate messagingTemplate) {
+                                 SimpMessagingTemplate messagingTemplate,
+                                 StringRedisTemplate redisTemplate) {
         this.stockPriceRepository = stockPriceRepository;
         this.messagingTemplate    = messagingTemplate;
+        this.redisTemplate        = redisTemplate;
     }
 
     @PostConstruct
@@ -52,7 +62,6 @@ public class PriceBroadcastService {
                 .filter(sp -> sp.getLastUpdatedAt() == null)
                 .forEach(sp -> {
                     sp.setLastUpdatedAt(now);
-                    // Backfill previousPrice for old rows that lack it
                     if (sp.getPreviousPrice() == null) sp.setPreviousPrice(sp.getCurrentPrice());
                     stockPriceRepository.save(sp);
                 });
@@ -60,8 +69,6 @@ public class PriceBroadcastService {
         broadcastPrices();
     }
 
-    // ── Secondary market trade: price = execution price from matching engine ──
-    // Captures previousPrice BEFORE updating so the change can be computed.
     @KafkaListener(topics = "trade-executed", groupId = "price-service-group")
     @Transactional
     public void onTradeExecuted(String payload) throws Exception {
@@ -74,7 +81,6 @@ public class PriceBroadcastService {
                 return s;
             });
 
-        // Capture previous price before overwriting — used for change calculation
         BigDecimal prevPrice = sp.getCurrentPrice() != null ? sp.getCurrentPrice() : event.price();
         sp.setPreviousPrice(prevPrice);
         sp.setCurrentPrice(event.price());
@@ -86,12 +92,15 @@ public class PriceBroadcastService {
         String ts = sp.getLastUpdatedAt().format(FMT);
         tradeCache.put(sp.getTicker(), new TradeSnapshot(event.price(), event.value(), ts));
 
+        StockPriceResponse response = buildResponse(sp);
+        cacheSinglePrice(response);
+        evictAllCache();
+
         log.info("Price updated ticker={} prev={} new={} qty={}",
             sp.getTicker(), prevPrice, sp.getCurrentPrice(), event.quantity());
         broadcastPrices();
     }
 
-    // ── Called by company-service when a stock is listed (sets initial price) ─
     @Transactional
     public StockPriceResponse createOrUpdateStock(String ticker, BigDecimal price) {
         StockPrice sp = stockPriceRepository.findByTicker(ticker.toUpperCase()).orElseGet(() -> {
@@ -99,35 +108,98 @@ public class PriceBroadcastService {
             s.setTicker(ticker.toUpperCase());
             return s;
         });
-        // For a newly listed stock previousPrice = currentPrice so change = 0.
-        // For an existing stock (re-listing / price update), keep previous price as-is.
         if (sp.getPreviousPrice() == null) sp.setPreviousPrice(price);
         sp.setCurrentPrice(price);
         sp.setLastUpdatedAt(LocalDateTime.now());
         stockPriceRepository.save(sp);
+
+        StockPriceResponse response = buildResponse(sp);
+        cacheSinglePrice(response);
+        evictAllCache();
+
         broadcastPrices();
-        return buildResponse(sp);
+        return response;
     }
 
     public List<StockPriceResponse> allPrices() {
-        return stockPriceRepository.findAll().stream().map(this::buildResponse).toList();
+        try {
+            String cached = redisTemplate.opsForValue().get(CACHE_ALL);
+            if (cached != null) {
+                log.debug("Cache hit: {}", CACHE_ALL);
+                return objectMapper.readValue(cached, new TypeReference<List<StockPriceResponse>>() {});
+            }
+        } catch (Exception e) {
+            log.warn("Redis read failed for all prices, falling back to DB: {}", e.getMessage());
+        }
+
+        List<StockPriceResponse> prices = stockPriceRepository.findAll()
+            .stream().map(this::buildResponse).toList();
+        cacheAllPrices(prices);
+        return prices;
     }
 
     public StockPriceResponse onePrice(String ticker) {
-        return stockPriceRepository.findByTicker(ticker.toUpperCase())
+        String upper = ticker.toUpperCase();
+        try {
+            String cached = redisTemplate.opsForValue().get(CACHE_PREFIX + upper);
+            if (cached != null) {
+                log.debug("Cache hit: {}{}", CACHE_PREFIX, upper);
+                return objectMapper.readValue(cached, StockPriceResponse.class);
+            }
+        } catch (Exception e) {
+            log.warn("Redis read failed for ticker {}, falling back to DB: {}", upper, e.getMessage());
+        }
+
+        StockPriceResponse response = stockPriceRepository.findByTicker(upper)
             .map(this::buildResponse)
             .orElseThrow(() -> new IllegalArgumentException("Ticker not found: " + ticker));
+        cacheSinglePrice(response);
+        return response;
     }
 
     public void broadcastPrices() {
         messagingTemplate.convertAndSend("/topic/prices", allPrices());
     }
 
+    // ── Cache helpers ─────────────────────────────────────────────────────────
+
+    private void cacheSinglePrice(StockPriceResponse r) {
+        try {
+            redisTemplate.opsForValue().set(
+                CACHE_PREFIX + r.ticker(),
+                objectMapper.writeValueAsString(r),
+                CACHE_TTL);
+        } catch (Exception e) {
+            log.warn("Redis write failed for ticker {}: {}", r.ticker(), e.getMessage());
+        }
+    }
+
+    private void cacheAllPrices(List<StockPriceResponse> prices) {
+        try {
+            redisTemplate.opsForValue().set(
+                CACHE_ALL,
+                objectMapper.writeValueAsString(prices),
+                CACHE_TTL);
+        } catch (Exception e) {
+            log.warn("Redis write failed for all prices: {}", e.getMessage());
+        }
+    }
+
+    private void evictAllCache() {
+        try {
+            redisTemplate.delete(CACHE_ALL);
+        } catch (Exception e) {
+            log.warn("Redis evict failed for {}: {}", CACHE_ALL, e.getMessage());
+        }
+    }
+
+    // ── Private helpers ───────────────────────────────────────────────────────
+
     private void create(String ticker, BigDecimal price) {
         StockPrice sp = new StockPrice();
         sp.setTicker(ticker);
         sp.setCurrentPrice(price);
-        sp.setPreviousPrice(price); // new seed stock: no prior price, so change = 0
+        sp.setPreviousPrice(price);
         sp.setLastUpdatedAt(LocalDateTime.now());
         stockPriceRepository.save(sp);
     }
@@ -139,9 +211,6 @@ public class PriceBroadcastService {
         String     updatedAt  = snap != null ? snap.timestamp()
             : (sp.getLastUpdatedAt() != null ? sp.getLastUpdatedAt().format(FMT) : null);
 
-        // Snapshot the entity into a transient response via the static factory
-        // (which computes change/changePct from previousPrice), then swap the
-        // trade fields with the in-memory cache values for freshness.
         StockPriceResponse base = StockPriceResponse.from(sp);
         return new StockPriceResponse(
             base.ticker(), base.currentPrice(), base.previousPrice(),
