@@ -426,6 +426,7 @@ jobs:
       # These are saved to $GITHUB_ENV and used by the rollback step if
       # smoke tests fail after this deployment.
       - name: Snapshot current image tags (for rollback)
+        id: snapshot
         run: |
           PREV_TAGS=""
           for svc in user-service order-service payment-service price-service company-service gateway-service matching-engine-service notification-service frontend; do
@@ -434,7 +435,7 @@ jobs:
               || echo "${{ env.IMAGE_BASE }}-${svc}:latest")
             PREV_TAGS="${PREV_TAGS}${svc}=${TAG},"
           done
-          echo "PREV_TAGS=${PREV_TAGS}" >> $GITHUB_ENV    
+          echo "prev_tags=${PREV_TAGS}" >> $GITHUB_OUTPUT    
 
       - name: Stamp image SHA tags (production overlay)
         run: |
@@ -488,6 +489,8 @@ jobs:
     needs: [ deploy-production ]
     environment: production
     steps:
+      - uses: actions/checkout@v4
+
       - name: Set up kubectl
         uses: azure/setup-kubectl@v4
 
@@ -547,8 +550,6 @@ jobs:
         run: |
           echo "Smoke tests failed — rolling back production deployments..."
             
-          # PREV_TAGS format: "svc1=image1:tag1,svc2=image2:tag2,..."
-          # Passed in via the deploy-production job's $GITHUB_ENV snapshot.
           IFS=',' read -ra ENTRIES <<< "${{ needs.deploy-production.outputs.prev_tags }}"
           for entry in "${ENTRIES[@]}"; do
             [ -z "$entry" ] && continue
