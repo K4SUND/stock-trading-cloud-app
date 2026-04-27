@@ -3,9 +3,10 @@ import axios from 'axios'
 import { Client } from '@stomp/stompjs'
 import SockJS from 'sockjs-client'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { GATEWAY, WS_URL, authHeaders, bookApi, companyApi, orderApi, paymentApi, priceApi, userApi } from '../api'
+import { authHeaders, bookApi, companyApi, orderApi, paymentApi, priceApi, userApi } from '../api'
 import { useAuth } from '../context/AuthContext'
 
+const GATEWAY = 'http://localhost:8080'
 const ROLES = ['ROLE_USER', 'ROLE_COMPANY', 'ROLE_ADMIN']
 const ROLE_META = {
   ROLE_USER:    { label: 'Trader',  cls: 'badge-info'    },
@@ -153,7 +154,7 @@ export default function AdminPage() {
   // WebSocket: live price feed (always active)
   useEffect(() => {
     const client = new Client({
-      webSocketFactory: () => new SockJS(WS_URL),
+      webSocketFactory: () => new SockJS(`${GATEWAY}/ws`),
       reconnectDelay: 5000,
       onConnect: () => {
         setWsConnected(true)

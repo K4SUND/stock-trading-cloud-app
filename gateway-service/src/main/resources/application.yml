@@ -74,12 +74,6 @@ spring:
           predicates:
             - Path=/ws/**
 
-        # ── frontend SPA — catch-all (must stay last) ────────────────────
-        - id: frontend-spa
-          uri: ${FRONTEND_SERVICE_URL:http://localhost:5173}
-          predicates:
-            - Path=/**
-
 app:
   jwt:
     secret: ${APP_JWT_SECRET:change-this-secret-key-change-this-secret-key}

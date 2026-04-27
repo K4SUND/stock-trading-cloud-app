@@ -38,12 +38,6 @@ spec:
               value: http://price-service:8084
             - name: COMPANY_SERVICE_URL
               value: http://company-service:8085
-            - name: MATCHING_ENGINE_SERVICE_URL
-              value: http://matching-engine-service:8086
-            - name: NOTIFICATION_SERVICE_URL
-              value: http://notification-service:8087
-            - name: FRONTEND_SERVICE_URL
-              value: http://frontend:5173
             - name: APP_JWT_SECRET
               valueFrom:
                 secretKeyRef:

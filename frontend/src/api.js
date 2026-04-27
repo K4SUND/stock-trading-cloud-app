@@ -1,17 +1,6 @@
 import axios from 'axios'
 
-function normalizeBaseUrl(value) {
-  return value.replace(/\/+$/, '')
-}
-
-const envGateway = (import.meta.env.VITE_GATEWAY_URL || '').trim()
-const browserOrigin = typeof window !== 'undefined' ? window.location.origin : ''
-const browserHost = typeof window !== 'undefined' ? window.location.hostname : ''
-const isLocalDevHost = browserHost === 'localhost' || browserHost === '127.0.0.1'
-const fallbackGateway = isLocalDevHost ? 'http://localhost:8080' : browserOrigin
-
-export const GATEWAY = normalizeBaseUrl(envGateway || fallbackGateway || 'http://localhost:8080')
-export const WS_URL = `${normalizeBaseUrl((import.meta.env.VITE_WS_BASE_URL || '').trim() || GATEWAY)}/ws`
+const GATEWAY = import.meta.env.VITE_GATEWAY_URL
 
 export const userApi = axios.create({ baseURL: `${GATEWAY}/api/users` })
 export const orderApi = axios.create({ baseURL: `${GATEWAY}/api/orders` })
