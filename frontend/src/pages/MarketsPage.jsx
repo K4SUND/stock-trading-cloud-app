@@ -1,8 +1,21 @@
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState, useCallback, useMemo } from 'react'
 import { authHeaders, bookApi, companyApi, orderApi, priceApi } from '../api'
 import { useAuth } from '../context/AuthContext'
 
+const PAGE_SIZE = 10
+
 function fmt$(n) { return `$${Number(n).toFixed(2)}` }
+
+function Pager({ page, totalPages, onPageChange }) {
+  if (totalPages <= 1) return null
+  return (
+    <div className="table-pager">
+      <button className="table-pager-btn" onClick={() => onPageChange(page - 1)} disabled={page <= 1}>Prev</button>
+      <span className="table-pager-info">Page {page} of {totalPages}</span>
+      <button className="table-pager-btn" onClick={() => onPageChange(page + 1)} disabled={page >= totalPages}>Next</button>
+    </div>
+  )
+}
 
 export default function MarketsPage() {
   const { token } = useAuth()
@@ -17,6 +30,8 @@ export default function MarketsPage() {
   const [bookLoading, setBookLoading]       = useState(false)
   const [showModal, setShowModal]           = useState(false)
   const [activeTab, setActiveTab]           = useState('primary') // 'primary' | 'secondary'
+  const [listingsPage, setListingsPage]     = useState(1)
+  const [marketTradesPage, setMarketTradesPage] = useState(1)
 
   // Primary market (IPO) form state
   const [ipoQty, setIpoQty]       = useState(1)
@@ -49,6 +64,15 @@ export default function MarketsPage() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
+
+  // Sorted listings (A-Z by company name)
+  const sortedListings = useMemo(
+    () => [...listings].sort((a, b) => String(a.companyName).localeCompare(String(b.companyName))),
+    [listings]
+  )
+
+  const listingsPageCount = Math.max(1, Math.ceil(sortedListings.length / PAGE_SIZE))
+  const displayedListings = sortedListings.slice((listingsPage - 1) * PAGE_SIZE, listingsPage * PAGE_SIZE)
 
   function getPrice(ticker)  { return prices.find(p => p.ticker === ticker) }
   function getIpo(ticker)    { return ipoAllocations.find(a => a.ticker === ticker) }
@@ -184,28 +208,29 @@ export default function MarketsPage() {
           <span className="card-hint">{listings.length} listing{listings.length !== 1 ? 's' : ''}</span>
         </div>
 
-        {listings.length === 0 ? (
+        {sortedListings.length === 0 ? (
           <div className="empty-state">
             <div className="empty-state-icon">🏢</div>
             <p className="empty-state-title">No stocks listed yet</p>
             <p className="empty-state-sub">Company accounts can list stocks from their Company Dashboard.</p>
           </div>
         ) : (
-          <div className="table-scroll">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Ticker</th>
-                  <th>Company</th>
-                  <th className="text-right">IPO Price</th>
-                  <th className="text-right">IPO Remaining</th>
-                  <th className="text-right">Market Price</th>
-                  <th className="text-right">Change</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {listings.map(l => {
+          <>
+            <div className="table-scroll">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Ticker</th>
+                    <th>Company</th>
+                    <th className="text-right">IPO Price</th>
+                    <th className="text-right">IPO Remaining</th>
+                    <th className="text-right">Market Price</th>
+                    <th className="text-right">Change</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {displayedListings.map(l => {
                   const mkt          = getPrice(l.ticker)
                   const ipo          = getIpo(l.ticker)
                   const chgPct       = mkt && mkt.changePct != null ? Number(mkt.changePct) : null
@@ -248,9 +273,11 @@ export default function MarketsPage() {
                     </tr>
                   )
                 })}
-              </tbody>
-            </table>
-          </div>
+                </tbody>
+              </table>
+            </div>
+            <Pager page={listingsPage} totalPages={listingsPageCount} onPageChange={setListingsPage} />
+          </>
         )}
       </div>
 

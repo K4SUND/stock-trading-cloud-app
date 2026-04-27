@@ -140,6 +140,18 @@ const emptyStock = { ticker: '', initialPrice: '', totalShares: '', description:
 
 const TABS = ['Overview', 'Listing', 'Traders', 'Settings']
 const CHART_RANGES = ['1D', '1W', '1M', '3M', '1Y', 'ALL']
+const PAGE_SIZE = 10
+
+function Pager({ page, totalPages, onPageChange }) {
+  if (totalPages <= 1) return null
+  return (
+    <div className="table-pager">
+      <button className="table-pager-btn" onClick={() => onPageChange(page - 1)} disabled={page <= 1}>Prev</button>
+      <span className="table-pager-info">Page {page} of {totalPages}</span>
+      <button className="table-pager-btn" onClick={() => onPageChange(page + 1)} disabled={page >= totalPages}>Next</button>
+    </div>
+  )
+}
 
 export default function CompanyDashboardPage() {
   const { token } = useAuth()
@@ -160,6 +172,7 @@ export default function CompanyDashboardPage() {
   const [isEditingStock, setIsEditingStock] = useState(false)
   const [chartRange, setChartRange] = useState('ALL')
   const [chartModalOpen, setChartModalOpen] = useState(false)
+  const [tradersPage, setTradersPage] = useState(1)
 
   // Single listing: if exists, update it; otherwise create
   const existingStock = stocks[0] || null
@@ -170,6 +183,10 @@ export default function CompanyDashboardPage() {
     loadStocks()
     loadPrices()
   }, [token])
+
+  useEffect(() => {
+    setTradersPage(prev => Math.min(prev, tradersPageCount))
+  }, [tradersPageCount])
 
   useEffect(() => {
     if (!token) return
@@ -235,11 +252,25 @@ export default function CompanyDashboardPage() {
       for (const u of usersRes.data) userMap[u.id] = u.username
       const byUser = {}
       for (const h of holders) {
-        if (!byUser[h.userId]) byUser[h.userId] = { userId: h.userId, username: userMap[h.userId] || `User #${h.userId}`, holdings: [], total: 0 }
+        if (!byUser[h.userId]) byUser[h.userId] = { userId: h.userId, username: userMap[h.userId] || `User #${h.userId}`, holdings: [], total: 0, portfolioValue: 0 }
         byUser[h.userId].holdings.push({ ticker: h.stockTicker, quantity: h.quantity })
         byUser[h.userId].total += h.quantity
       }
-      setTraders(Object.values(byUser).sort((a, b) => b.total - a.total))
+      // Calculate portfolio value for each trader using current prices
+      const traders = Object.values(byUser)
+      for (const trader of traders) {
+        let value = 0
+        for (const holding of trader.holdings) {
+          const price = prices[holding.ticker]
+          const currentPrice = price ? Number(price.currentPrice) : null
+          if (currentPrice !== null) {
+            value += currentPrice * holding.quantity
+          }
+        }
+        trader.portfolioValue = value
+      }
+      // Sort by portfolio value (high to low)
+      setTraders(traders.sort((a, b) => b.portfolioValue - a.portfolioValue))
     } catch { setTraders([]) }
   }
 
@@ -295,13 +326,17 @@ export default function CompanyDashboardPage() {
   }
 
   // ── derived stats ──
-  const totalMarketCap = stocks.reduce((acc, s) => {
+   const totalMarketCap = stocks.reduce((acc, s) => {
     const p = prices[s.ticker]
     return acc + (p ? Number(p.currentPrice) * Number(s.totalShares) : Number(s.initialPrice) * Number(s.totalShares))
   }, 0)
   const totalTraders = traders.length
   const totalShares = stocks.reduce((acc, s) => acc + Number(s.totalShares), 0)
   const totalSharesHeld = traders.reduce((acc, t) => acc + t.total, 0)
+
+  // Pagination for traders
+  const tradersPageCount = Math.max(1, Math.ceil(traders.length / PAGE_SIZE))
+  const displayedTraders = traders.slice((tradersPage - 1) * PAGE_SIZE, tradersPage * PAGE_SIZE)
 
   function buildTransactionSeries(ticker, ipoPrice, currentPrice) {
     const trades = marketTrades
@@ -1152,57 +1187,60 @@ export default function CompanyDashboardPage() {
                 ))}
               </div>
 
-              <div className="cdb-card">
-                <div className="table-scroll">
-                  <table className="cdb-table">
-                    <thead>
-                      <tr>
-                        <th style={{ width: 40 }}>#</th>
-                        <th>Shareholder</th>
-                        <th>Holdings</th>
-                        <th className="r">Total Shares</th>
-                        <th className="r">Portfolio %</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {traders.length === 0 && (
-                        <tr><td colSpan={5}><div className="cdb-empty">No traders yet — no shares have been purchased.</div></td></tr>
-                      )}
-                      {traders.map((t, i) => {
-                        const pct = totalSharesHeld > 0 ? (t.total / totalSharesHeld) * 100 : 0
-                        const color = PALETTE[i % PALETTE.length]
-                        return (
-                          <tr key={t.userId}>
-                            <td style={{ color: 'var(--muted)', fontFamily: 'var(--mono)', fontSize: 11.5 }}>{String(i + 1).padStart(2, '0')}</td>
-                            <td>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                <div className="cdb-avatar" style={{ background: color }}>
-                                  {t.username.charAt(0).toUpperCase()}
-                                </div>
-                                <span style={{ fontWeight: 600 }}>{t.username}</span>
-                              </div>
-                            </td>
-                            <td>
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                                {t.holdings.map(h => (
-                                  <span key={h.ticker} className="cdb-chip">
-                                    <span className="cdb-ticker" style={{ fontSize: 10, padding: '1px 5px' }}>{h.ticker}</span>
-                                    <span style={{ fontFamily: 'var(--mono)', fontSize: 11.5, fontWeight: 700 }}>{h.quantity.toLocaleString()}</span>
-                                  </span>
-                                ))}
-                              </div>
-                            </td>
-                            <td className="r mono" style={{ fontWeight: 700, color: 'var(--text)' }}>{t.total.toLocaleString()}</td>
-                            <td className="r">
-                              <span style={{ fontFamily: 'var(--mono)', fontSize: 12.5, color, fontWeight: 600 }}>{pct.toFixed(1)}%</span>
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+               <div className="cdb-card">
+                 <div className="table-scroll">
+                   <table className="cdb-table">
+                     <thead>
+                       <tr>
+                         <th style={{ width: 40 }}>#</th>
+                         <th>Shareholder</th>
+                         <th>Holdings</th>
+                         <th className="r">Total Shares</th>
+                         <th className="r">Portfolio Value</th>
+                         <th className="r">Portfolio %</th>
+                       </tr>
+                     </thead>
+                     <tbody>
+                       {displayedTraders.length === 0 && (
+                         <tr><td colSpan={6}><div className="cdb-empty">No traders yet — no shares have been purchased.</div></td></tr>
+                       )}
+                       {displayedTraders.map((t, i) => {
+                         const pct = totalSharesHeld > 0 ? (t.total / totalSharesHeld) * 100 : 0
+                         const color = PALETTE[((tradersPage - 1) * PAGE_SIZE + i) % PALETTE.length]
+                         return (
+                           <tr key={t.userId}>
+                             <td style={{ color: 'var(--muted)', fontFamily: 'var(--mono)', fontSize: 11.5 }}>{String((tradersPage - 1) * PAGE_SIZE + i + 1).padStart(2, '0')}</td>
+                             <td>
+                               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                 <div className="cdb-avatar" style={{ background: color }}>
+                                   {t.username.charAt(0).toUpperCase()}
+                                 </div>
+                                 <span style={{ fontWeight: 600 }}>{t.username}</span>
+                               </div>
+                             </td>
+                             <td>
+                               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                                 {t.holdings.map(h => (
+                                   <span key={h.ticker} className="cdb-chip">
+                                     <span className="cdb-ticker" style={{ fontSize: 10, padding: '1px 5px' }}>{h.ticker}</span>
+                                     <span style={{ fontFamily: 'var(--mono)', fontSize: 11.5, fontWeight: 700 }}>{h.quantity.toLocaleString()}</span>
+                                   </span>
+                                 ))}
+                               </div>
+                             </td>
+                             <td className="r mono" style={{ fontWeight: 700, color: 'var(--text)' }}>{t.total.toLocaleString()}</td>
+                             <td className="r mono" style={{ fontWeight: 700, color: 'var(--text)' }}>${t.portfolioValue.toFixed(2)}</td>
+                             <td className="r">
+                               <span style={{ fontFamily: 'var(--mono)', fontSize: 12.5, color, fontWeight: 600 }}>{pct.toFixed(1)}%</span>
+                             </td>
+                           </tr>
+                         )
+                       })}
+                     </tbody>
+                   </table>
+                 </div>
+                 <Pager page={tradersPage} totalPages={tradersPageCount} onPageChange={setTradersPage} />
+               </div>
             </div>
           )}
 
