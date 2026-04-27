@@ -1,42 +1,154 @@
 package com.prototype.paymentservice.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.prototype.paymentservice.dto.CardTopupRequest;
+import com.prototype.paymentservice.dto.CardTopupResponse;
 import com.prototype.paymentservice.dto.TopupRequest;
+import com.prototype.paymentservice.dto.WithdrawRequest;
 import com.prototype.paymentservice.dto.WalletResponse;
+import com.prototype.paymentservice.dto.WalletTransactionResponse;
 import com.prototype.paymentservice.events.TradeExecutedEvent;
 import com.prototype.paymentservice.model.Wallet;
+import com.prototype.paymentservice.model.WalletTransaction;
 import com.prototype.paymentservice.repository.WalletRepository;
+import com.prototype.paymentservice.repository.WalletTransactionRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.kafka.annotation.KafkaListener;
-import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 @Service
 public class WalletService {
     private static final Logger log = LoggerFactory.getLogger(WalletService.class);
 
     private final WalletRepository walletRepository;
-    private final ObjectMapper     objectMapper = new ObjectMapper();
+    private final WalletTransactionRepository walletTransactionRepository;
+    private final SandboxCardGatewayService sandboxCardGatewayService;
+    private final UserCredentialVerificationService userCredentialVerificationService;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public WalletService(WalletRepository walletRepository) {
+    public WalletService(
+        WalletRepository walletRepository,
+        WalletTransactionRepository walletTransactionRepository,
+        SandboxCardGatewayService sandboxCardGatewayService,
+        UserCredentialVerificationService userCredentialVerificationService
+    ) {
         this.walletRepository = walletRepository;
+        this.walletTransactionRepository = walletTransactionRepository;
+        this.sandboxCardGatewayService = sandboxCardGatewayService;
+        this.userCredentialVerificationService = userCredentialVerificationService;
     }
 
     @Transactional
     public WalletResponse topup(Long userId, TopupRequest request) {
+        assertPasswordConfirmed(userId, request.password());
         Wallet wallet = getOrCreate(userId);
         wallet.setBalance(wallet.getBalance().add(request.amount()));
         walletRepository.save(wallet);
+        walletTransactionRepository.save(buildTransaction(
+            userId,
+            request.amount(),
+            "TOPUP",
+            "SUCCESS",
+            "MANUAL",
+            "INTERNAL",
+            null,
+            null,
+            "Manual wallet top-up"
+        ));
         log.info("Wallet topup userId={} amount={} newBalance={}", userId, request.amount(), wallet.getBalance());
+        return new WalletResponse(wallet.getBalance());
+    }
+
+    @Transactional(noRollbackFor = IllegalStateException.class)
+    public CardTopupResponse topupBySandboxCard(Long userId, CardTopupRequest request) {
+        assertPasswordConfirmed(userId, request.password());
+        Wallet wallet = getOrCreate(userId);
+        SandboxCardGatewayService.CardPaymentResult result = sandboxCardGatewayService.charge(request);
+
+        walletTransactionRepository.save(buildTransaction(
+            userId,
+            request.amount(),
+            "TOPUP",
+            result.approved() ? "SUCCESS" : "FAILED",
+            "CARD",
+            "SANDBOX",
+            result.gatewayReference(),
+            result.cardLast4(),
+            result.message()
+        ));
+
+        if (!result.approved()) {
+            throw new IllegalStateException(result.message());
+        }
+
+        wallet.setBalance(wallet.getBalance().add(request.amount()));
+        walletRepository.save(wallet);
+        log.info(
+            "Sandbox card topup userId={} amount={} reference={} newBalance={}",
+            userId,
+            request.amount(),
+            result.gatewayReference(),
+            wallet.getBalance()
+        );
+
+        return new CardTopupResponse(
+            wallet.getBalance(),
+            "SUCCESS",
+            result.gatewayReference(),
+            "Card payment approved in sandbox and funds added to wallet."
+        );
+    }
+
+    @Transactional
+    public WalletResponse withdraw(Long userId, WithdrawRequest request) {
+        assertPasswordConfirmed(userId, request.password());
+        Wallet wallet = getOrCreate(userId);
+
+        if (wallet.getBalance().compareTo(request.amount()) < 0) {
+            throw new IllegalStateException("Insufficient wallet balance for withdrawal.");
+        }
+
+        wallet.setBalance(wallet.getBalance().subtract(request.amount()));
+        walletRepository.save(wallet);
+        walletTransactionRepository.save(buildTransaction(
+            userId,
+            request.amount(),
+            "WITHDRAW",
+            "SUCCESS",
+            "MANUAL",
+            "INTERNAL",
+            null,
+            null,
+            "Wallet withdrawal"
+        ));
+        log.info("Wallet withdraw userId={} amount={} newBalance={}", userId, request.amount(), wallet.getBalance());
         return new WalletResponse(wallet.getBalance());
     }
 
     public WalletResponse getWallet(Long userId) {
         return new WalletResponse(getOrCreate(userId).getBalance());
+    }
+
+    public List<WalletTransactionResponse> getRecentTransactions(Long userId) {
+        return walletTransactionRepository.findTop20ByUserIdOrderByCreatedAtDesc(userId)
+            .stream()
+            .map(t -> new WalletTransactionResponse(
+                t.getId(),
+                t.getAmount(),
+                t.getType(),
+                t.getStatus(),
+                t.getPaymentMethod(),
+                t.getGateway(),
+                t.getCardLast4(),
+                t.getNote(),
+                t.getCreatedAt()
+            ))
+            .toList();
     }
 
     // ── IPO purchase: deduct cost from buyer's wallet (called synchronously) ──
@@ -87,5 +199,36 @@ public class WalletService {
             w.setBalance(BigDecimal.ZERO);
             return walletRepository.save(w);
         });
+    }
+
+    private WalletTransaction buildTransaction(
+        Long userId,
+        BigDecimal amount,
+        String type,
+        String status,
+        String paymentMethod,
+        String gateway,
+        String gatewayReference,
+        String cardLast4,
+        String note
+    ) {
+        WalletTransaction tx = new WalletTransaction();
+        tx.setUserId(userId);
+        tx.setAmount(amount);
+        tx.setType(type);
+        tx.setStatus(status);
+        tx.setPaymentMethod(paymentMethod);
+        tx.setGateway(gateway);
+        tx.setGatewayReference(gatewayReference);
+        tx.setCardLast4(cardLast4);
+        tx.setNote(note);
+        return tx;
+    }
+
+    private void assertPasswordConfirmed(Long userId, String password) {
+        boolean verified = userCredentialVerificationService.verifyPassword(userId, password);
+        if (!verified) {
+            throw new SecurityException("Password confirmation failed.");
+        }
     }
 }
