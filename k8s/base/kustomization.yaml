@@ -8,6 +8,7 @@ resources:
   - db-init-job.yaml           # runs once on first deploy to create databases on RDS
   - kafka.yaml
   - mongodb.yaml               # notification-service uses MongoDB (not RDS)
+  - redis.yaml
   - user-service.yaml
   - order-service.yaml
   - payment-service.yaml

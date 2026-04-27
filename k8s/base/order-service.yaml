@@ -41,6 +41,8 @@ spec:
                   key: APP_JWT_SECRET
             - name: PRICE_SERVICE_URL
               value: http://price-service:8084
+            - name: PAYMENT_SERVICE_URL
+              value: http://payment-service:8083
           readinessProbe:
             tcpSocket:
               port: 8082

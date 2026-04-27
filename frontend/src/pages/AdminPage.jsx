@@ -7,6 +7,7 @@ import { authHeaders, bookApi, companyApi, orderApi, paymentApi, priceApi, userA
 import { useAuth } from '../context/AuthContext'
 
 const GATEWAY = import.meta.env.VITE_GATEWAY_URL
+
 const ROLES = ['ROLE_USER', 'ROLE_COMPANY', 'ROLE_ADMIN']
 const ROLE_META = {
   ROLE_USER:    { label: 'Trader',  cls: 'badge-info'    },
