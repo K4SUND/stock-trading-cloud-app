@@ -1,0 +1,36 @@
+package com.prototype.matchingengine.service;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.prototype.matchingengine.events.OrderCancelledEvent;
+import com.prototype.matchingengine.events.TradeExecutedEvent;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.stereotype.Service;
+
+@Service
+public class RabbitPublisher {
+    private static final Logger log = LoggerFactory.getLogger(RabbitPublisher.class);
+    private static final String EXCHANGE = "trading.events";
+
+    private final RabbitTemplate rabbit;
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    public RabbitPublisher(RabbitTemplate rabbit) { this.rabbit = rabbit; }
+
+    public void publishTrade(TradeExecutedEvent event) { publish("trade-executed", event); }
+
+    public void publishCancelled(OrderCancelledEvent event) { publish("order-cancelled", event); }
+
+    private void publish(String routingKey, Object event) {
+        try {
+            String payload = objectMapper.writeValueAsString(event);
+            rabbit.convertAndSend(EXCHANGE, routingKey, payload);
+            log.debug("Published routingKey={} payload={}", routingKey, payload);
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
+    }
+}
+

@@ -8,7 +8,7 @@ import com.prototype.paymentservice.model.Wallet;
 import com.prototype.paymentservice.repository.WalletRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -53,7 +53,7 @@ public class WalletService {
     }
 
     // ── Trade settlement: money moves buyer → seller ─────────────────────────
-    @KafkaListener(topics = "trade-executed", groupId = "payment-service-group")
+    @RabbitListener(queues = "payment-service.trade-executed")
     @Transactional
     public void onTradeExecuted(String payload) throws Exception {
         TradeExecutedEvent event = objectMapper.readValue(payload, TradeExecutedEvent.class);

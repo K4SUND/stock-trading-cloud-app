@@ -25,19 +25,19 @@ public class CompanyService {
     private final CompanyProfileRepository profileRepo;
     private final StockListingRepository   stockRepo;
     private final RestTemplate             restTemplate;
-    private final KafkaEventPublisher      kafkaPublisher;
+    private final RabbitEventPublisher     eventPublisher;
     private final String                   priceServiceUrl;
     private final String                   orderServiceUrl;
 
     public CompanyService(CompanyProfileRepository profileRepo, StockListingRepository stockRepo,
                           RestTemplate restTemplate,
-                          KafkaEventPublisher kafkaPublisher,
+                          RabbitEventPublisher eventPublisher,
                           @Value("${price-service.url}") String priceServiceUrl,
                           @Value("${order-service.url}") String orderServiceUrl) {
         this.profileRepo     = profileRepo;
         this.stockRepo       = stockRepo;
         this.restTemplate    = restTemplate;
-        this.kafkaPublisher  = kafkaPublisher;
+        this.eventPublisher  = eventPublisher;
         this.priceServiceUrl = priceServiceUrl;
         this.orderServiceUrl = orderServiceUrl;
     }
@@ -88,7 +88,7 @@ public class CompanyService {
         // Seed IPO allocation in order-service (no matching engine; direct purchase)
         issueSharesInOrderBook(userId, listing.getTicker(), request.totalShares(), request.initialPrice());
 
-        kafkaPublisher.publishStockListed(new StockListedEvent(
+        eventPublisher.publishStockListed(new StockListedEvent(
             userId, profile.getCompanyName(), listing.getTicker(),
             request.totalShares(), request.initialPrice()));
 
@@ -121,7 +121,7 @@ public class CompanyService {
         long delta = request.totalShares() - previousShares;
         if (delta > 0) {
             issueSharesInOrderBook(userId, ticker, delta, request.initialPrice());
-            kafkaPublisher.publishSharesIssued(new SharesIssuedEvent(
+            eventPublisher.publishSharesIssued(new SharesIssuedEvent(
                 userId, profile.getCompanyName(), ticker.toUpperCase(), delta, request.initialPrice()));
             log.info("Additional shares issued ticker={} delta={}", ticker, delta);
         }

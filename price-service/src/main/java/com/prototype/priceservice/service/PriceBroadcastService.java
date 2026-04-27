@@ -9,8 +9,8 @@ import com.prototype.priceservice.repository.StockPriceRepository;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -69,7 +69,7 @@ public class PriceBroadcastService {
         broadcastPrices();
     }
 
-    @KafkaListener(topics = "trade-executed", groupId = "price-service-group")
+    @RabbitListener(queues = "price-service.trade-executed")
     @Transactional
     public void onTradeExecuted(String payload) throws Exception {
         TradeExecutedEvent event = objectMapper.readValue(payload, TradeExecutedEvent.class);

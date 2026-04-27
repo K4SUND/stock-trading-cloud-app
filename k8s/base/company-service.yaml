@@ -32,6 +32,8 @@ spec:
                 secretKeyRef:
                   name: app-secrets
                   key: DB_PASSWORD
+            - name: SPRING_RABBITMQ_HOST
+              value: rabbitmq
             - name: APP_JWT_SECRET
               valueFrom:
                 secretKeyRef:

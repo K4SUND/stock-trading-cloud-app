@@ -15,8 +15,8 @@ import com.prototype.orderservice.repository.PortfolioRepository;
 import com.prototype.orderservice.repository.TradeRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
@@ -36,7 +36,7 @@ public class OrderProcessingService {
     private final TradeRepository         tradeRepository;
     private final IpoAllocationRepository ipoAllocationRepository;
     private final IpoPurchaseRepository   ipoPurchaseRepository;
-    private final KafkaEventPublisher     kafkaPublisher;
+    private final RabbitEventPublisher    eventPublisher;
     private final RestTemplate            restTemplate;
     private final MarketStatusRepository  marketStatusRepository;
     private final ObjectMapper            objectMapper = new ObjectMapper();
@@ -49,7 +49,7 @@ public class OrderProcessingService {
                                   TradeRepository tradeRepository,
                                   IpoAllocationRepository ipoAllocationRepository,
                                   IpoPurchaseRepository ipoPurchaseRepository,
-                                  KafkaEventPublisher kafkaPublisher,
+                                  RabbitEventPublisher eventPublisher,
                                   RestTemplate restTemplate,
                                   MarketStatusRepository marketStatusRepository) {
         this.orderRepository         = orderRepository;
@@ -57,7 +57,7 @@ public class OrderProcessingService {
         this.tradeRepository         = tradeRepository;
         this.ipoAllocationRepository = ipoAllocationRepository;
         this.ipoPurchaseRepository   = ipoPurchaseRepository;
-        this.kafkaPublisher          = kafkaPublisher;
+        this.eventPublisher          = eventPublisher;
         this.restTemplate            = restTemplate;
         this.marketStatusRepository  = marketStatusRepository;
     }
@@ -110,7 +110,7 @@ public class OrderProcessingService {
         order.setStatus(OrderStatus.OPEN);
         order = orderRepository.save(order);
 
-        kafkaPublisher.publishOrderPlaced(new OrderPlacedEvent(
+        eventPublisher.publishOrderPlaced(new OrderPlacedEvent(
             order.getId(), userId,
             order.getStockTicker(),
             type.name(), mode.name(),
@@ -161,7 +161,7 @@ public class OrderProcessingService {
         purchase.setPurchasedAt(Instant.now());
         ipoPurchaseRepository.save(purchase);
 
-        kafkaPublisher.publishIpoPurchased(new IpoPurchasedEvent(
+        eventPublisher.publishIpoPurchased(new IpoPurchasedEvent(
             userId, upper, quantity, alloc.getIpoPrice(), totalCost));
 
         log.info("IPO purchase userId={} ticker={} qty={} price={} totalCost={}",
@@ -197,14 +197,14 @@ public class OrderProcessingService {
         order.setStatus(OrderStatus.CANCELLED);
         orderRepository.save(order);
 
-        kafkaPublisher.publishOrderCancelled(new OrderCancelledEvent(
+        eventPublisher.publishOrderCancelled(new OrderCancelledEvent(
             orderId, userId, order.getStockTicker(), order.remainingQty(), "USER_CANCELLED"));
 
         log.info("Order cancelled id={} userId={}", orderId, userId);
     }
 
     // ── Consume trade-executed: update portfolio + order status ──────────────
-    @KafkaListener(topics = "trade-executed", groupId = "order-service-group")
+    @RabbitListener(queues = "order-service.trade-executed")
     @Transactional
     public void onTradeExecuted(String payload) throws Exception {
         TradeExecutedEvent event = objectMapper.readValue(payload, TradeExecutedEvent.class);
@@ -240,7 +240,7 @@ public class OrderProcessingService {
     }
 
     // ── Consume order-cancelled from matching engine ─────────────────────────
-    @KafkaListener(topics = "order-cancelled", groupId = "order-service-group")
+    @RabbitListener(queues = "order-service.order-cancelled")
     @Transactional
     public void onOrderCancelled(String payload) throws Exception {
         OrderCancelledEvent event = objectMapper.readValue(payload, OrderCancelledEvent.class);

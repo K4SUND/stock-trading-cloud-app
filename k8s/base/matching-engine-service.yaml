@@ -1,6 +1,6 @@
 # matching-engine-service — stateless order matcher
 # No database (pure in-memory logic), no JWT.
-# Depends on: kafka (events), order-service (HTTP callbacks)
+# Depends on: rabbitmq (events), order-service (HTTP callbacks)
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -21,8 +21,8 @@ spec:
           ports:
             - containerPort: 8086
           env:
-            - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
-              value: kafka:9092
+            - name: SPRING_RABBITMQ_HOST
+              value: rabbitmq
             - name: ORDER_SERVICE_URL
               value: http://order-service:8082
           readinessProbe:

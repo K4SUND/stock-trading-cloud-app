@@ -14,7 +14,7 @@ docker compose up --build
 ```bash
 # Terminal 1 – infrastructure
 cd infra
-docker compose up postgres kafka zookeeper
+docker compose up postgres rabbitmq redis mongodb
 
 # Terminals 2–5 – one per service
 cd user-service && ./mvnw spring-boot:run
@@ -56,15 +56,15 @@ The frontend and all external clients communicate exclusively through `gateway-s
 
 This is a microservices stock-trading prototype. Each Spring Boot service has its own PostgreSQL database (`usersdb`, `ordersdb`, `paymentsdb`, `pricesdb`) created by `infra/postgres-init/01-create-dbs.sql`. Schemas are auto-managed via `ddl-auto: update`.
 
-**Async event flow (Kafka):**
-1. `order-service` receives a trade request, saves it as `PENDING`, publishes `order-created`
-2. `payment-service` consumes `order-created`, deducts/credits the wallet, publishes `payment-result`
-3. `order-service` consumes `payment-result`, marks the order `COMPLETED` or `FAILED`, updates the portfolio, publishes `order-completed`
-4. `price-service` consumes `order-completed`, adjusts the stock price (±quantity × $0.20), broadcasts updated prices over WebSocket to `/topic/prices`
+**Async event flow (RabbitMQ):**
+1. `order-service` receives a trade request, stores the order, and publishes `order-placed`
+2. `matching-engine-service` consumes `order-placed`, matches orders, and publishes `trade-executed` (or `order-cancelled` when needed)
+3. `order-service`, `payment-service`, `price-service`, and `notification-service` consume `trade-executed` for settlement, portfolio/order updates, and live price updates
+4. `company-service` publishes `stock-listed` and `shares-issued`; `notification-service` consumes both
 
 **Synchronous REST call:** When creating an order, `order-service` calls `price-service` via `RestTemplate` to fetch the current price before persisting the order. The URL is configured via `price-service.url` / `PRICE_SERVICE_URL`.
 
-**Kafka topics:** `order-created`, `payment-result`, `order-completed`
+**RabbitMQ exchange/routing keys:** exchange `trading.events` with routing keys `order-placed`, `order-cancelled`, `trade-executed`, `ipo-purchased`, `stock-listed`, `shares-issued`
 
 **API Gateway:** `gateway-service` (Spring Cloud Gateway, port 8080) is the single entry point for all frontend traffic. It validates JWT tokens centrally via a `GlobalFilter` before routing, adds `X-User-Id` and `X-User-Role` headers to downstream requests, and handles CORS. Public paths that bypass JWT: `/api/users/auth/**`, `/api/prices/**`, `/ws/**`. Downstream services retain their own JWT validation (defence in depth).
 
@@ -78,6 +78,6 @@ This is a microservices stock-trading prototype. Each Spring Boot service has it
 
 All Spring Boot services read configuration from environment variables with local defaults in `application.yml`:
 - `SPRING_DATASOURCE_URL` / `SPRING_DATASOURCE_USERNAME` / `SPRING_DATASOURCE_PASSWORD`
-- `SPRING_KAFKA_BOOTSTRAP_SERVERS` (default `localhost:9092`; Docker Compose uses `kafka:29092`)
+- `SPRING_RABBITMQ_HOST` / `SPRING_RABBITMQ_PORT` / `SPRING_RABBITMQ_USERNAME` / `SPRING_RABBITMQ_PASSWORD`
 - `APP_JWT_SECRET` — must be identical across all four services
 - `PRICE_SERVICE_URL` — used only by `order-service` and `payment-service`

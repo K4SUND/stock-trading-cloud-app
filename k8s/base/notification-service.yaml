@@ -20,8 +20,8 @@ spec:
           env:
             - name: SPRING_DATA_MONGODB_URI
               value: mongodb://mongodb:27017/notificationsdb
-            - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
-              value: kafka:9092
+            - name: SPRING_RABBITMQ_HOST
+              value: rabbitmq
             - name: APP_JWT_SECRET
               valueFrom:
                 secretKeyRef:

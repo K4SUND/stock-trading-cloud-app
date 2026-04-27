@@ -1,36 +1,3 @@
 package com.prototype.orderservice.service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.prototype.orderservice.events.IpoPurchasedEvent;
-import com.prototype.orderservice.events.OrderCancelledEvent;
-import com.prototype.orderservice.events.OrderPlacedEvent;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.stereotype.Service;
-
-@Service
-public class KafkaEventPublisher {
-    private static final Logger log = LoggerFactory.getLogger(KafkaEventPublisher.class);
-    private final KafkaTemplate<String, String> kafkaTemplate;
-    private final ObjectMapper objectMapper = new ObjectMapper();
-
-    public KafkaEventPublisher(KafkaTemplate<String, String> kafkaTemplate) {
-        this.kafkaTemplate = kafkaTemplate;
-    }
-
-    public void publishOrderPlaced(OrderPlacedEvent event)       { publish("order-placed", event); }
-    public void publishOrderCancelled(OrderCancelledEvent event) { publish("order-cancelled", event); }
-    public void publishIpoPurchased(IpoPurchasedEvent event)     { publish("ipo-purchased", event); }
-
-    private void publish(String topic, Object event) {
-        try {
-            String payload = objectMapper.writeValueAsString(event);
-            kafkaTemplate.send(topic, payload);
-            log.info("Published topic={} payload={}", topic, payload);
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException(e);
-        }
-    }
-}
+// Legacy file kept only to avoid breaking old local branches.

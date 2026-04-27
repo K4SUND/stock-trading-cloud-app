@@ -8,7 +8,7 @@ It includes:
 - `order-service` for buy/sell orders and portfolio
 - `payment-service` for wallet balance and payment processing
 - `price-service` for stock prices and WebSocket updates
-- Apache Kafka for asynchronous events
+- RabbitMQ for asynchronous events
 - PostgreSQL for persistent data
 - Docker Compose for local deployment
 - Structured application logs
@@ -19,13 +19,11 @@ It includes:
 2. Frontend loads stock prices from `price-service`.
 3. Frontend subscribes to WebSocket price updates.
 4. User places a BUY or SELL order using `order-service`.
-5. `order-service` stores the order as `PENDING` and publishes an `order-created` event to Kafka.
-6. `payment-service` consumes the event, checks wallet balance, and publishes a payment result event.
-7. `order-service` consumes the payment result:
-   - on success: completes the order and updates portfolio
-   - on failure: marks the order as failed
-8. `order-service` publishes an `order-completed` event.
-9. `price-service` consumes the completed event and updates stock price.
+5. `order-service` stores the order and publishes an `order-placed` message.
+6. `matching-engine-service` consumes `order-placed`, executes matching, and publishes `trade-executed`.
+7. `payment-service` consumes `trade-executed` and settles buyer/seller wallets.
+8. `order-service` consumes `trade-executed` and updates order fills and portfolio positions.
+9. `price-service` consumes `trade-executed` and updates stock price.
 10. `price-service` broadcasts the new prices over WebSocket.
 
 ## Project structure
@@ -49,7 +47,7 @@ It includes:
 - Node.js 20+
 - npm 10+
 - PostgreSQL 15+
-- Kafka locally, or use Docker Compose only for infra
+- RabbitMQ locally, or use Docker Compose only for infra
 
 ## Quick start with Docker Compose
 
@@ -86,7 +84,7 @@ You should:
 
 ```bash
 cd infra
-docker compose up postgres kafka zookeeper
+docker compose up postgres rabbitmq redis mongodb
 ```
 
 ### 2. Run services in separate terminals
@@ -119,11 +117,14 @@ npm install
 npm run dev
 ```
 
-## Kafka topics used
+## RabbitMQ routing keys used
 
-- `order-created`
-- `payment-result`
-- `order-completed`
+- `order-placed`
+- `order-cancelled`
+- `trade-executed`
+- `ipo-purchased`
+- `stock-listed`
+- `shares-issued`
 
 ## Logging
 
@@ -132,7 +133,7 @@ Each service logs:
 - order state changes
 - payment decisions
 - price updates
-- Kafka publish/consume actions
+- RabbitMQ publish/consume actions
 
 The logs are intentionally verbose so you can show them in your demo.
 
@@ -146,7 +147,7 @@ The logs are intentionally verbose so you can show them in your demo.
 6. Observe price update in the stock list and WebSocket stream.
 7. Sell some shares.
 8. Show portfolio and wallet changes.
-9. Show logs from services and Kafka-driven flow.
+9. Show logs from services and RabbitMQ-driven flow.
 
 ## Notes
 
@@ -154,4 +155,4 @@ The logs are intentionally verbose so you can show them in your demo.
 - The price update algorithm is intentionally simple:
   - BUY increases price slightly
   - SELL decreases price slightly
-- Services call each other with REST where immediate responses are needed, and use Kafka for asynchronous internal workflows.
+- Services call each other with REST where immediate responses are needed, and use RabbitMQ for asynchronous internal workflows.

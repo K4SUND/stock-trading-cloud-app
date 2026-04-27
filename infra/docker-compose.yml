@@ -4,30 +4,11 @@ services:
     ports:
       - "6379:6379"
 
-  zookeeper:
-    image: confluentinc/cp-zookeeper:7.5.0
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
+  rabbitmq:
+    image: rabbitmq:3-management
     ports:
-      - "2181:2181"
-
-  kafka:
-    image: confluentinc/cp-kafka:7.5.0
-    depends_on:
-      - zookeeper
-    ports:
-      - "9092:9092"
-      - "29092:29092"
-    environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
-      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      - "5672:5672"
+      - "15672:15672"
 
   postgres:
     image: postgres:15
@@ -51,12 +32,10 @@ services:
     build: ../user-service
     depends_on:
       - postgres
-      - kafka
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/usersdb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
-      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       APP_JWT_SECRET: change-this-secret-key-change-this-secret-key
       ADMIN_USERNAME: admin
       ADMIN_PASSWORD: Admin@StockTrade2024
@@ -67,13 +46,13 @@ services:
     build: ../order-service
     depends_on:
       - postgres
-      - kafka
+      - rabbitmq
       - payment-service
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/ordersdb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
-      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SPRING_RABBITMQ_HOST: rabbitmq
       APP_JWT_SECRET: change-this-secret-key-change-this-secret-key
       PAYMENT_SERVICE_URL: http://payment-service:8083
     ports:
@@ -83,12 +62,12 @@ services:
     build: ../payment-service
     depends_on:
       - postgres
-      - kafka
+      - rabbitmq
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/paymentsdb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
-      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SPRING_RABBITMQ_HOST: rabbitmq
       APP_JWT_SECRET: change-this-secret-key-change-this-secret-key
     ports:
       - "8083:8083"
@@ -97,13 +76,13 @@ services:
     build: ../price-service
     depends_on:
       - postgres
-      - kafka
+      - rabbitmq
       - redis
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/pricesdb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
-      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SPRING_RABBITMQ_HOST: rabbitmq
       SPRING_DATA_REDIS_HOST: redis
     ports:
       - "8084:8084"
@@ -112,14 +91,14 @@ services:
     build: ../company-service
     depends_on:
       - postgres
-      - kafka
+      - rabbitmq
       - price-service
       - order-service
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/companydb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
-      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SPRING_RABBITMQ_HOST: rabbitmq
       APP_JWT_SECRET: change-this-secret-key-change-this-secret-key
       PRICE_SERVICE_URL: http://price-service:8084
       ORDER_SERVICE_URL: http://order-service:8082
@@ -129,10 +108,10 @@ services:
   matching-engine-service:
     build: ../matching-engine-service
     depends_on:
-      - kafka
+      - rabbitmq
       - order-service
     environment:
-      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SPRING_RABBITMQ_HOST: rabbitmq
       ORDER_SERVICE_URL: http://order-service:8082
     ports:
       - "8086:8086"
@@ -141,10 +120,10 @@ services:
     build: ../notification-service
     depends_on:
       - mongodb
-      - kafka
+      - rabbitmq
     environment:
       SPRING_DATA_MONGODB_URI: mongodb://mongodb:27017/notificationsdb
-      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SPRING_RABBITMQ_HOST: rabbitmq
       APP_JWT_SECRET: change-this-secret-key-change-this-secret-key
     ports:
       - "8087:8087"

@@ -11,7 +11,7 @@ import com.prototype.matchingengine.model.OrderBook;
 import com.prototype.matchingengine.model.OrderEntry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -25,11 +25,11 @@ public class MatchingEngineService {
     private final ConcurrentHashMap<String, OrderBook> books = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Object>    locks = new ConcurrentHashMap<>();
 
-    private final KafkaPublisher kafkaPublisher;
+    private final RabbitPublisher rabbitPublisher;
     private final ObjectMapper   objectMapper = new ObjectMapper();
 
-    public MatchingEngineService(KafkaPublisher kafkaPublisher) {
-        this.kafkaPublisher = kafkaPublisher;
+    public MatchingEngineService(RabbitPublisher rabbitPublisher) {
+        this.rabbitPublisher = rabbitPublisher;
     }
 
     // ── Startup: rebuild books from order-service DB ────────────────────────
@@ -49,8 +49,8 @@ public class MatchingEngineService {
             openOrders.size(), books.size());
     }
 
-    // ── Kafka: new order placed ─────────────────────────────────────────────
-    @KafkaListener(topics = "order-placed", groupId = "matching-engine-group")
+    // ── Message bus: new order placed ───────────────────────────────────────
+    @RabbitListener(queues = "matching-engine.order-placed")
     public void onOrderPlaced(String payload) throws Exception {
         OrderPlacedEvent event = objectMapper.readValue(payload, OrderPlacedEvent.class);
         log.debug("Order placed orderId={} side={} mode={} ticker={} qty={} limitPrice={}",
@@ -64,8 +64,8 @@ public class MatchingEngineService {
         }
     }
 
-    // ── Kafka: order cancelled ──────────────────────────────────────────────
-    @KafkaListener(topics = "order-cancelled", groupId = "matching-engine-group")
+    // ── Message bus: order cancelled ────────────────────────────────────────
+    @RabbitListener(queues = "matching-engine.order-cancelled")
     public void onOrderCancelled(String payload) throws Exception {
         OrderCancelledEvent event = objectMapper.readValue(payload, OrderCancelledEvent.class);
         OrderBook book = bookFor(event.ticker());
@@ -91,7 +91,7 @@ public class MatchingEngineService {
             BigDecimal tradePrice = bestAsk.limitPrice; // passive order sets price
             BigDecimal tradeValue = tradePrice.multiply(BigDecimal.valueOf(tradeQty));
 
-            kafkaPublisher.publishTrade(new TradeExecutedEvent(
+            rabbitPublisher.publishTrade(new TradeExecutedEvent(
                 UUID.randomUUID().toString(),
                 event.ticker(),
                 event.orderId(), bestAsk.orderId,
@@ -114,7 +114,7 @@ public class MatchingEngineService {
                 "BUY", event.limitPrice(), remaining, event.timestamp()));
         }
         if (remaining > 0 && isMarket) {
-            kafkaPublisher.publishCancelled(new OrderCancelledEvent(
+            rabbitPublisher.publishCancelled(new OrderCancelledEvent(
                 event.orderId(), event.userId(), event.ticker(), remaining, "MARKET_NO_LIQUIDITY"));
         }
     }
@@ -134,7 +134,7 @@ public class MatchingEngineService {
             BigDecimal tradePrice = bestBid.limitPrice;
             BigDecimal tradeValue = tradePrice.multiply(BigDecimal.valueOf(tradeQty));
 
-            kafkaPublisher.publishTrade(new TradeExecutedEvent(
+            rabbitPublisher.publishTrade(new TradeExecutedEvent(
                 UUID.randomUUID().toString(),
                 event.ticker(),
                 bestBid.orderId, event.orderId(),
@@ -157,7 +157,7 @@ public class MatchingEngineService {
                 "SELL", event.limitPrice(), remaining, event.timestamp()));
         }
         if (remaining > 0 && isMarket) {
-            kafkaPublisher.publishCancelled(new OrderCancelledEvent(
+            rabbitPublisher.publishCancelled(new OrderCancelledEvent(
                 event.orderId(), event.userId(), event.ticker(), remaining, "MARKET_NO_LIQUIDITY"));
         }
     }
