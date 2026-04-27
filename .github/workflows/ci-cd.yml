@@ -449,6 +449,11 @@ jobs:
       - name: Apply manifests (Kustomize)
         run: kubectl apply -k k8s/overlays/production
 
+      - name: Wait for Kafka/Zookeeper
+        run: |
+          kubectl rollout status statefulset/zookeeper -n production --timeout=300s
+          kubectl rollout status statefulset/kafka -n production --timeout=300s  
+
       - name: Wait for db-init Job to complete
         run: kubectl wait --for=condition=complete job/db-init -n production --timeout=120s
 

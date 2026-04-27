@@ -5,6 +5,11 @@ import SockJS from 'sockjs-client'
 import { authHeaders, bookApi, companyApi, orderApi, paymentApi, priceApi } from '../api'
 import { useAuth } from '../context/AuthContext'
 
+
+
+const GATEWAY = import.meta.env.VITE_GATEWAY_URL
+
+
 const STATUS_META = {
   OPEN:             { label: 'Open',         cls: 'badge-open'    },
   PARTIALLY_FILLED: { label: 'Partial Fill', cls: 'badge-warning' },
@@ -237,7 +242,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const client = new Client({
-      webSocketFactory: () => new SockJS('http://localhost:8080/ws'),
+      webSocketFactory: () => new SockJS(`${GATEWAY}/ws`),
       reconnectDelay: 5000,
       onConnect: () => {
         setWsConnected(true)

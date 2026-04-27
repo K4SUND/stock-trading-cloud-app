@@ -6,7 +6,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { authHeaders, bookApi, companyApi, orderApi, paymentApi, priceApi, userApi } from '../api'
 import { useAuth } from '../context/AuthContext'
 
-const GATEWAY = 'http://localhost:8080'
+const GATEWAY = import.meta.env.VITE_GATEWAY_URL
 const ROLES = ['ROLE_USER', 'ROLE_COMPANY', 'ROLE_ADMIN']
 const ROLE_META = {
   ROLE_USER:    { label: 'Trader',  cls: 'badge-info'    },
