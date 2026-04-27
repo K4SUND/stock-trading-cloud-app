@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Client } from '@stomp/stompjs'
 import SockJS from 'sockjs-client'
-import { authHeaders, bookApi, companyApi, orderApi, paymentApi, priceApi } from '../api'
+import { WS_URL, authHeaders, bookApi, companyApi, orderApi, paymentApi, priceApi } from '../api'
 import { useAuth } from '../context/AuthContext'
 
 const STATUS_META = {
@@ -237,7 +237,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const client = new Client({
-      webSocketFactory: () => new SockJS('http://localhost:8080/ws'),
+      webSocketFactory: () => new SockJS(WS_URL),
       reconnectDelay: 5000,
       onConnect: () => {
         setWsConnected(true)
