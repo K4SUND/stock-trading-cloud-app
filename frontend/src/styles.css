@@ -26,7 +26,7 @@
   --db-primary-bdr: #c3d3fc;
 
   /* Semantic */
-  --db-buy:         #16a34a;
+  --db-buy:         #15803d;
   --db-buy-bg:      #f0fdf4;
   --db-buy-bdr:     #bbf7d0;
   --db-sell:        #dc2626;
@@ -48,6 +48,32 @@
 
   --mono: 'JetBrains Mono', 'Fira Code', monospace;
   --sans: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+  /* Legacy token aliases used by older page sections */
+  --bg: var(--db-bg);
+  --surface: var(--db-surface);
+  --surface2: var(--db-surface2);
+  --border: var(--db-border);
+  --text: var(--db-text);
+  --text-sec: var(--db-text-sec);
+  --text-muted: var(--db-text-muted);
+  --primary: var(--db-primary);
+  --primary-h: var(--db-primary-h);
+  --radius: var(--db-radius);
+  --radius-sm: var(--db-radius-sm);
+  --shadow: var(--db-shadow);
+  --shadow-md: var(--db-shadow-md);
+  --success: var(--db-buy);
+  --success-bg: var(--db-buy-bg);
+  --success-border: var(--db-buy-bdr);
+  --buy: var(--db-buy);
+  --sell: var(--db-sell);
+  --danger: var(--db-sell);
+  --danger-bg: var(--db-sell-bg);
+  --danger-border: var(--db-sell-bdr);
+  --warning-bg: var(--db-warning-bg);
+  --warning-border: var(--db-warning-bdr);
+  --warning-text: var(--db-warning-txt);
 }
 
 /* ── Base reset ─────────────────────────────────────────────────────────── */
@@ -777,7 +803,7 @@ kbd {
   position: fixed; inset: 0;
   background: rgba(15, 23, 42, 0.60);
   backdrop-filter: blur(4px);
-  z-index: 300;
+  z-index: 3500;
   display: flex; align-items: center; justify-content: center;
   padding: 20px;
   animation: tmFadeIn .18s ease;
@@ -2116,6 +2142,35 @@ kbd {
 .book-cols-header { display: grid; grid-template-columns: 1fr 80px 50px; padding: 4px 16px; font-size: 11px; color: var(--db-text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: .3px; border-bottom: 1px solid var(--db-border); background: var(--db-surface2); }
 .book-empty { padding: 14px 16px; text-align: center; color: var(--db-text-muted); font-size: 13px; }
 .book-row-clickable { cursor: pointer; }
+
+/* ── Wallet visibility fixes ──────────────────────────────────────────────── */
+.wallet-pro-grid .wallet-balance-pro {
+  background: linear-gradient(135deg, #0b1120 0%, #1e3a5f 100%);
+}
+.wallet-pro-grid .wallet-balance-pro .balance-label {
+  color: #dbeafe;
+  opacity: 1;
+}
+.wallet-pro-grid .wallet-balance-pro .balance-amount {
+  color: #ffffff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+.wallet-pro-grid .wallet-balance-pro .balance-currency {
+  color: #bfdbfe;
+}
+.wallet-pro-grid .wallet-payment-card,
+.wallet-pro-grid .wallet-transactions-card {
+  color: var(--db-text);
+}
+.wallet-pro-grid .wallet-tx-sub,
+.wallet-pro-grid .wallet-tx-time,
+.wallet-pro-grid .card-hint,
+.wallet-pro-grid .form-label {
+  color: var(--db-text-sec);
+}
+.wallet-pro-grid .wallet-tx-list {
+  background: var(--db-surface);
+}
 
 /* ── Responsive ──────────────────────────────────────────────────────────── */
 @media (max-width: 1200px) {
