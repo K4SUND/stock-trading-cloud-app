@@ -39,6 +39,10 @@ spec:
                   key: APP_JWT_SECRET
             - name: PRICE_SERVICE_URL
               value: http://price-service:8084
+            - name: ORDER_SERVICE_URL
+              value: http://order-service:8082
+            - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
+              value: kafka:9092
           readinessProbe:
             tcpSocket:
               port: 8085
