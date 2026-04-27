@@ -166,6 +166,7 @@ jobs:
           tags: |
             ${{ env.IMAGE_BASE }}-${{ matrix.service }}:latest
             ${{ env.IMAGE_BASE }}-${{ matrix.service }}:${{ env.IMAGE_TAG }}
+          build-args: ${{ matrix.service == 'frontend' && format('VITE_GATEWAY_URL={0}', secrets.VITE_GATEWAY_URL) || '' }}
           cache-from: type=gha          # uses GitHub Actions cache for layer reuse
           cache-to: type=gha,mode=max
 
