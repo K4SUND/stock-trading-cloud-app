@@ -51,4 +51,11 @@ public class NotificationController {
         notificationService.delete(id, userId);
         return ResponseEntity.noContent().build();
     }
+
+    @DeleteMapping("/clear-all")
+    public ResponseEntity<Void> clearAll(Authentication auth) {
+        Long userId = (Long) auth.getPrincipal();
+        notificationService.clearAll(userId);
+        return ResponseEntity.noContent().build();
+    }
 }

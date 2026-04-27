@@ -24,6 +24,7 @@ import org.springframework.web.client.RestTemplate;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 
@@ -273,6 +274,28 @@ public class OrderProcessingService {
             .stream().map(TradeResponse::from).toList();
     }
 
+    public List<TradeResponse> marketTrades(String ticker, String range) {
+        String normalizedTicker = ticker != null ? ticker.trim().toUpperCase() : null;
+        String normalizedRange  = range != null ? range.trim().toUpperCase() : null;
+
+        // Preserve existing behaviour for consumers that call /market/trades with no params.
+        if ((normalizedTicker == null || normalizedTicker.isEmpty())
+            && (normalizedRange == null || normalizedRange.isEmpty())) {
+            return recentMarketTrades();
+        }
+
+        if (normalizedTicker == null || normalizedTicker.isEmpty()) {
+            throw new IllegalArgumentException("ticker is required when using range history");
+        }
+
+        Instant from = parseRangeStart(normalizedRange);
+        List<Trade> trades = from == null
+            ? tradeRepository.findByTickerOrderByExecutedAtAsc(normalizedTicker)
+            : tradeRepository.findByTickerAndExecutedAtGreaterThanEqualOrderByExecutedAtAsc(normalizedTicker, from);
+
+        return trades.stream().map(TradeResponse::from).toList();
+    }
+
     public List<IpoPurchaseResponse> userIpoPurchases(Long userId) {
         return ipoPurchaseRepository.findByUserIdOrderByPurchasedAtDesc(userId)
             .stream().map(IpoPurchaseResponse::from).toList();
@@ -318,6 +341,20 @@ public class OrderProcessingService {
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
+
+    private Instant parseRangeStart(String range) {
+        if (range == null || range.isBlank() || "ALL".equals(range)) return null;
+
+        Instant now = Instant.now();
+        return switch (range) {
+            case "1D" -> now.minus(1, ChronoUnit.DAYS);
+            case "1W" -> now.minus(7, ChronoUnit.DAYS);
+            case "1M" -> now.minus(30, ChronoUnit.DAYS);
+            case "3M" -> now.minus(90, ChronoUnit.DAYS);
+            case "1Y" -> now.minus(365, ChronoUnit.DAYS);
+            default -> null;
+        };
+    }
 
     // Synchronously deducts the IPO purchase cost from the user's wallet.
     // Throws IllegalStateException if balance is insufficient or the payment

@@ -34,16 +34,23 @@ images:
   - name: stock-trading-matching-engine-service
     newName: placeholder/stock-trading-matching-engine-service
     newTag: latest
+  - name: stock-trading-notification-service
+    newName: placeholder/stock-trading-notification-service
+    newTag: latest
   - name: stock-trading-frontend
     newName: placeholder/stock-trading-frontend
     newTag: latest
 
-# Staging = 1 replica per service, Recreate strategy (no concurrent old+new pods on small nodes)
+# Staging = 1 replica per service (saves cloud resources during QA)
 patches:
   - patch: |-
       - op: replace
         path: /spec/replicas
         value: 1
+    target:
+      kind: Deployment
+
+  - patch: |-
       - op: add
         path: /spec/strategy
         value:
