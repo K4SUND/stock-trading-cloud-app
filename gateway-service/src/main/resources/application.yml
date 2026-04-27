@@ -16,6 +16,12 @@ spring:
       # ── Central CORS — single source of truth for the frontend ──────────
       globalcors:
         cors-configurations:
+          '[/ws/**]': # ← specific block for WebSocket
+            allowed-origin-patterns: "*"       # reflects exact origin, not wildcard
+            allowed-methods: [ GET, POST, OPTIONS ]
+            allowed-headers: "*"
+            allow-credentials: true            # required for SockJS withCredentials
+
           '[/**]':
             allowed-origins: "*"
             allowed-methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
