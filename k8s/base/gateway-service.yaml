@@ -38,6 +38,8 @@ spec:
               value: http://price-service:8084
             - name: COMPANY_SERVICE_URL
               value: http://company-service:8085
+            - name: NOTIFICATION_SERVICE_URL
+              value: http://notification-service:8087
             - name: APP_JWT_SECRET
               valueFrom:
                 secretKeyRef:
