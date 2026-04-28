@@ -1,95 +1,58 @@
-# Simple Cloud-Native Stock Trading Prototype
+# Cloud-Native Stock Trading Platform
 
-This starter project implements a **simple stock buying/selling prototype** for your cloud computing assignment.
-It includes:
+This project is a **cloud-native stock trading platform** built using a **microservices architecture** with event-driven communication.
 
-- React frontend
-- `user-service` for register/login with JWT
-- `order-service` for buy/sell orders and portfolio
-- `payment-service` for wallet balance and payment processing
-- `price-service` for stock prices and WebSocket updates
-- Apache Kafka for asynchronous events
-- PostgreSQL for persistent data
-- Docker Compose for local deployment
-- Structured application logs
+It is designed as a **scalable, production-oriented system** and serves as the foundation for a **full-featured professional trading application**. The platform supports real-time trading workflows, asynchronous processing, and modular service evolution.
 
-## Business flow
+---
 
-1. User registers and logs in.
-2. Frontend loads stock prices from `price-service`.
-3. Frontend subscribes to WebSocket price updates.
-4. User places a BUY or SELL order using `order-service`.
-5. `order-service` stores the order as `PENDING` and publishes an `order-created` event to Kafka.
-6. `payment-service` consumes the event, checks wallet balance, and publishes a payment result event.
-7. `order-service` consumes the payment result:
-   - on success: completes the order and updates portfolio
-   - on failure: marks the order as failed
-8. `order-service` publishes an `order-completed` event.
-9. `price-service` consumes the completed event and updates stock price.
-10. `price-service` broadcasts the new prices over WebSocket.
+## Running the Project Locally
 
-## Project structure
+---
 
-- `frontend/` - React + Vite app
-- `user-service/` - Spring Boot auth service
-- `order-service/` - Spring Boot orders and portfolio service
-- `payment-service/` - Spring Boot wallet and payment service
-- `price-service/` - Spring Boot pricing + WebSocket service
-- `infra/` - Docker Compose and Postgres init scripts
+## Option 1: Run Everything with Docker Compose
 
-## Prerequisites
-
-### To run everything with Docker Compose
+### Prerequisites
 - Docker Desktop
 - Docker Compose plugin
 
-### To run backend/frontend without Docker
-- Java 17
-- Maven 3.9+
-- Node.js 20+
-- npm 10+
-- PostgreSQL 15+
-- Kafka locally, or use Docker Compose only for infra
-
-## Quick start with Docker Compose
-
-From the project root:
+### Steps
 
 ```bash
 cd infra
 docker compose up --build
-```
+````
 
-When everything is up, open:
-- Frontend: `http://localhost:5173`
-- User Service: `http://localhost:8081`
-- Order Service: `http://localhost:8082`
-- Payment Service: `http://localhost:8083`
-- Price Service: `http://localhost:8084`
+### Access Services
 
-## Demo users / initial data
+| Service              | URL                                            |
+| -------------------- | ---------------------------------------------- |
+| Frontend             | [http://localhost:5173](http://localhost:5173) |
+| API Gateway          | [http://localhost:8080](http://localhost:8080) |
+| User Service         | [http://localhost:8081](http://localhost:8081) |
+| Order Service        | [http://localhost:8082](http://localhost:8082) |
+| Payment Service      | [http://localhost:8083](http://localhost:8083) |
+| Price Service        | [http://localhost:8084](http://localhost:8084) |
+| Company Service      | [http://localhost:8085](http://localhost:8085) |
+| Matching Engine      | [http://localhost:8086](http://localhost:8086) |
+| Notification Service | [http://localhost:8087](http://localhost:8087) |
 
-The app auto-creates sample stocks in `price-service` on first startup:
-- ABC - 100.00
-- XYZ - 250.00
-- QRS - 75.00
+---
 
-You should:
-1. Register a user in the UI.
-2. Login.
-3. Seed the user's wallet from the Payment page section.
-4. Buy or sell stocks.
+## Option 2: Run Locally Without Docker (Development Mode)
 
-## Local run without Docker Compose (recommended for development)
-
-### 1. Start infrastructure only
+### Step 1 — Start Infrastructure Only
 
 ```bash
 cd infra
-docker compose up postgres kafka zookeeper
+docker compose up postgres kafka zookeeper redis mongodb
 ```
 
-### 2. Run services in separate terminals
+---
+
+### Step 2 — Run Backend Services
+
+Open separate terminals for each service:
 
 ```bash
 cd user-service
@@ -111,7 +74,29 @@ cd price-service
 ./mvnw spring-boot:run
 ```
 
-### 3. Run frontend
+```bash
+cd company-service
+./mvnw spring-boot:run
+```
+
+```bash
+cd matching-engine-service
+./mvnw spring-boot:run
+```
+
+```bash
+cd notification-service
+./mvnw spring-boot:run
+```
+
+```bash
+cd api-gateway
+./mvnw spring-boot:run
+```
+
+---
+
+### Step 3 — Run Frontend
 
 ```bash
 cd frontend
@@ -119,39 +104,108 @@ npm install
 npm run dev
 ```
 
-## Kafka topics used
+---
 
-- `order-created`
-- `payment-result`
-- `order-completed`
+## System Overview
 
-## Logging
+This platform follows a **microservices + event-driven architecture**:
 
-Each service logs:
-- request handling
-- order state changes
-- payment decisions
-- price updates
-- Kafka publish/consume actions
+* Services communicate via **REST (synchronous)** and **Kafka (asynchronous)**
+* Each service owns its own data
+* Real-time updates are delivered via **WebSockets**
+* API Gateway acts as the **single entry point**
 
-The logs are intentionally verbose so you can show them in your demo.
+---
 
-## Suggested demo flow
+## Services and Responsibilities
 
-1. Register a user.
-2. Login.
-3. Add wallet balance.
-4. Buy 3 shares of ABC.
-5. Observe order as `PENDING`, then `COMPLETED`.
-6. Observe price update in the stock list and WebSocket stream.
-7. Sell some shares.
-8. Show portfolio and wallet changes.
-9. Show logs from services and Kafka-driven flow.
+| Service              | Port | Responsibility                                          |
+| -------------------- | ---- | ------------------------------------------------------- |
+| API Gateway          | 8080 | JWT validation, routing, CORS, user context propagation |
+| User Service         | 8081 | Authentication, JWT issuance, role management           |
+| Order Service        | 8082 | Order lifecycle, portfolio, trade history               |
+| Payment Service      | 8083 | Wallet, balance validation, transactions                |
+| Price Service        | 8084 | Stock prices, Redis caching, WebSocket updates          |
+| Company Service      | 8085 | IPO management, company data                            |
+| Matching Engine      | 8086 | Order matching, order book, partial fills               |
+| Notification Service | 8087 | Real-time notifications (MongoDB)                       |
 
-## Notes
+---
 
-- This is a **prototype**, not a real trading engine.
-- The price update algorithm is intentionally simple:
-  - BUY increases price slightly
-  - SELL decreases price slightly
-- Services call each other with REST where immediate responses are needed, and use Kafka for asynchronous internal workflows.
+### Event-driven Processing
+
+* **Payment Service**
+
+  * Validates wallet balance
+  * Publishes `payment-result`
+
+* **Order Service**
+
+  * Updates order status (SUCCESS / FAILED)
+  * Publishes `order-completed`
+
+* **Matching Engine**
+
+  * Matches buy/sell orders
+  * Handles partial fills
+
+* **Price Service**
+
+  * Updates stock price
+  * Publishes real-time updates via WebSocket
+
+* **Notification Service**
+
+  * Sends trade alerts to users
+
+---
+
+## Kafka Topics
+
+* `order-created`
+* `payment-result`
+* `order-completed`
+
+---
+
+## Data Layer
+
+| Component  | Usage                                                     |
+| ---------- | --------------------------------------------------------- |
+| PostgreSQL | Core relational data (users, orders, payments, companies) |
+| Redis      | Price caching and fast access                             |
+| MongoDB    | Notifications storage                                     |
+| Kafka      | Event streaming                                           |
+
+---
+
+## Key Features
+
+* Microservices architecture
+* Event-driven design using Kafka
+* Real-time price updates (WebSocket)
+* API Gateway with JWT security
+* Order matching engine with partial fills
+* IPO and company management
+* Portfolio and wallet tracking
+* Scalable and cloud-ready design
+
+---
+
+## Suggested Demo Flow
+
+1. Register and login
+2. Add funds to wallet
+3. Place BUY order
+4. Observe:
+
+   * Order lifecycle updates
+   * Kafka event logs
+   * Matching engine execution
+5. View portfolio changes
+6. Watch live price updates
+7. Receive notifications
+
+
+```
+```
