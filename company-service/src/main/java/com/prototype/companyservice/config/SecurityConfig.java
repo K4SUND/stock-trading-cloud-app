@@ -22,6 +22,7 @@ public class SecurityConfig {
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/companies/public/**").permitAll()
+                        .requestMatchers("/actuator/**").permitAll()
                         .anyRequest().hasAnyAuthority("ROLE_COMPANY", "ROLE_ADMIN"))
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
