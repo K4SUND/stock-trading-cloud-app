@@ -2,13 +2,7 @@
 
 name: Stock Trading CI/CD Pipeline
 
-# ═══════════════════════════════════════════════════════════════════════
-# TRIGGERS
-#   • push to master        → full pipeline (CI + Docker + Staging + Prod)
-#   • push to develop       → CI only (Sonar + Build/Test)
-#   • push to pipeline-test → CI only (for testing the pipeline itself)
-#   • PR to master          → CI only
-# ═══════════════════════════════════════════════════════════════════════
+
 on:
   push:
     branches: [master, develop, pipeline-test]
@@ -20,18 +14,12 @@ env:
   IMAGE_TAG: sha-${{ github.sha }}
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
-# ═══════════════════════════════════════════════════════════════════════
+
 # STAGE 1-A: Static Code Analysis (SonarCloud)
 #
-# WHY: Catch bugs, code smells, and security hotspots BEFORE the image
-# is built. Runs on every push/PR in a parallel matrix (one job per
-# Java service) so feedback is fast.
-#
-# SETUP NEEDED:
-#   1. Create a free account at https://sonarcloud.io (sign in with GitHub)
-#   2. Import this repository — it auto-creates an organization
-#   3. Add GitHub Secrets: SONAR_TOKEN, SONAR_ORG
-# ═══════════════════════════════════════════════════════════════════════
+# Catch bugs, code smells, and security hotspots BEFORE the image is built. Runs on every push/PR in a parallel matrix (one job per Java service) so feedback is fast.
+
+
 jobs:
   sonar:
     name: "SonarCloud · ${{ matrix.service }}"
@@ -71,13 +59,11 @@ jobs:
             -Dsonar.organization=${{ secrets.SONAR_ORG }} \
             -Dsonar.host.url=https://sonarcloud.io
 
-  # ═══════════════════════════════════════════════════════════════════════
+
   # STAGE 1-B: Build & Test (runs in PARALLEL with Sonar)
-  #
-  # WHY: Verify the code compiles and passes tests on every push.
-  # Currently no tests exist, but the structure is ready — as soon as
-  # you annotate a test with @Tag("unit") or @Tag("integration"), it runs.
-  # ═══════════════════════════════════════════════════════════════════════
+  # Verify the code compiles and passes tests on every push.
+
+
   test:
     name: "Build & Test · ${{ matrix.service }}"
     runs-on: ubuntu-latest
@@ -115,20 +101,13 @@ jobs:
         working-directory: ${{ matrix.service }}
         run: mvn -B compile -DskipTests
 
-  # ═══════════════════════════════════════════════════════════════════════
+
   # STAGE 2: Docker Build → Push to DockerHub (master only)
-  #
-  # WHY: Produce a versioned, immutable image tagged with the git SHA.
+  # Produce a versioned, immutable image tagged with the git SHA.
   # The exact same image that was tested in Sonar/Build is what gets
   # promoted to staging and then production — no rebuilds in later stages.
-  #
-  # Images produced:
-  #   <user>/stock-trading-<service>:latest
-  #   <user>/stock-trading-<service>:sha-<commit>
-  #
-  # SETUP NEEDED:
-  #   GitHub Secrets: DOCKERHUB_USERNAME, DOCKERHUB_TOKEN
-  # ═══════════════════════════════════════════════════════════════════════
+
+
   docker:
     name: "Docker · ${{ matrix.service }}"
     runs-on: ubuntu-latest
@@ -170,28 +149,17 @@ jobs:
           cache-from: type=gha          # uses GitHub Actions cache for layer reuse
           cache-to: type=gha,mode=max
 
-  # ═══════════════════════════════════════════════════════════════════════
+
   # STAGE 3: Deploy to Staging / QA
   #
-  # WHY: Deploy the exact SHA-tagged image to a staging Kubernetes cluster
-  # so QA can verify behavior before production.
+  # Deploy the exact SHA-tagged image to a staging Kubernetes cluster
+  # QA can verify behavior before production.
   #
   # Kustomize overlays (k8s/overlays/staging/) set:
   #   • namespace = staging
   #   • replicas = 1 (lower resource usage)
   #   • exact image SHA tags
-  #
-  # GITHUB SECRETS NEEDED (app repo only):
-  #   AWS_ACCESS_KEY_ID     → same key as infra repo
-  #   AWS_SECRET_ACCESS_KEY → same key as infra repo
-  #   AWS_REGION            → ap-south-1
-  #   APP_JWT_SECRET        → shared JWT secret across all services
-  #   ADMIN_USERNAME        → admin bootstrap username
-  #   ADMIN_PASSWORD        → admin bootstrap password
-  #
-  # NO kubeconfig secret needed — pipeline fetches cluster info from SSM
-  # NO DB_PASSWORD secret needed — pipeline fetches it from SSM
-  # ═══════════════════════════════════════════════════════════════════════
+
 #  deploy-staging:
 #    name: Deploy → Staging
 #    runs-on: ubuntu-latest
@@ -283,13 +251,10 @@ jobs:
           
           
 
-  # ═══════════════════════════════════════════════════════════════════════
+
   # STAGE 4: Smoke Tests on Staging
-  #
-  # WHY: Confirm the staging deployment is actually healthy before asking
-  # a human to approve production. Tests hit public API endpoints
-  # through the gateway (the Load Balancer entry point).
-  # ═══════════════════════════════════════════════════════════════════════
+  # Confirm the staging deployment is actually healthy before asking a human to approve production. Tests hit public API endpoints through the gateway (the Load Balancer entry point).
+
 #  smoke-test:
 #    name: Smoke Tests (Staging)
 #    runs-on: ubuntu-latest
@@ -348,25 +313,15 @@ jobs:
 #            && echo "Auth endpoint reachable (got $STATUS as expected)" \
 #            || { echo "Auth endpoint unreachable (got $STATUS)"; exit 1; }
 
-  # ═══════════════════════════════════════════════════════════════════════
+
   # STAGE 5: Deploy to Production
-  #
-  # WHY: Ship the SAME SHA-tagged image that was validated in staging.
+  # Ship the SAME SHA-tagged image that was validated in staging.
   # Never rebuild — what was tested is what ships.
-  #
-  # MANUAL APPROVAL GATE:
-  #   Go to: GitHub repo → Settings → Environments → "production"
-  #   Add "Required reviewers" (yourself or teammates).
-  #   The pipeline pauses here until a reviewer approves.
-  #
   # Kustomize overlays (k8s/overlays/production/) set:
   #   • namespace = production
   #   • replicas = 2 (high availability)
-  #
-  # SETUP NEEDED:
-  #   GitHub Secrets: KUBE_CONFIG_PRODUCTION
-  #   GitHub Environment: "production" with required reviewers
-  # ═══════════════════════════════════════════════════════════════════════
+  #   GitHub Environment: "production"
+
   deploy-production:
     name: Deploy → Production
     runs-on: ubuntu-latest
@@ -424,8 +379,7 @@ jobs:
           
           
       # Snapshot the currently-live image tags BEFORE we overwrite them.
-      # These are saved to $GITHUB_ENV and used by the rollback step if
-      # smoke tests fail after this deployment.
+      # These are saved to $GITHUB_ENV and used by the rollback step if smoke tests fail after this deployment.
       - name: Snapshot current image tags (for rollback)
         id: snapshot
         run: |

@@ -1,13 +1,10 @@
-# ─────────────────────────────────────────────────────────────────────────────
+
 # db-init-job — Creates the 5 application databases on RDS
-#
 # This Job runs ONCE on first deploy (or if you manually delete it).
 # It connects to the RDS instance and runs CREATE DATABASE for each service.
 # Kubernetes automatically retries if it fails (e.g. RDS not ready yet).
-#
-# The RDS host comes from the 'db-config' ConfigMap which the pipeline
-# creates from SSM Parameter Store values.
-# ─────────────────────────────────────────────────────────────────────────────
+# The RDS host comes from the 'db-config' ConfigMap which the pipeline creates from SSM Parameter Store values.
+
 apiVersion: batch/v1
 kind: Job
 metadata:

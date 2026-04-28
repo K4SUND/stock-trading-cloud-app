@@ -1,12 +1,8 @@
-# ─────────────────────────────────────────────────────────────────────────────
-# frontend — React SPA
-#
-# Also exposed as LoadBalancer so users can reach the UI directly.
+
+# frontend
+# Also exposed as LoadBalancer and  can reach the UI directly.
 # The React app calls the backend via gateway-service at port 8080.
-#
-# NOTE: The current Dockerfile runs `npm run dev` (development server).
-# For production, build a static bundle and serve via nginx instead.
-# ─────────────────────────────────────────────────────────────────────────────
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:

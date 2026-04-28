@@ -1,13 +1,9 @@
-# ─────────────────────────────────────────────────────────────────────────────
+
 # gateway-service — THE LOAD BALANCER / SINGLE ENTRY POINT
-#
 # This is the only service exposed to the internet (type: LoadBalancer).
 # All frontend traffic and external API calls go through port 8080 here.
-# Kubernetes cloud providers (GKE, EKS, AKS) will provision a real cloud
 # load balancer and assign a public IP automatically.
-#
-# For local testing (minikube): run `minikube tunnel` to get an IP.
-# ─────────────────────────────────────────────────────────────────────────────
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:

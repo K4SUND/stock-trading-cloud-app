@@ -1,25 +1,4 @@
-# ─────────────────────────────────────────────────────────────────────────────
-# Prometheus scrape configuration
-#
-# To enable full JVM + HTTP metrics on each Spring Boot service, add these
-# Maven dependencies to each service's pom.xml:
-#
-#   <dependency>
-#     <groupId>org.springframework.boot</groupId>
-#     <artifactId>spring-boot-starter-actuator</artifactId>
-#   </dependency>
-#   <dependency>
-#     <groupId>io.micrometer</groupId>
-#     <artifactId>micrometer-registry-prometheus</artifactId>
-#   </dependency>
-#
-# And in application.yml:
-#   management:
-#     endpoints:
-#       web:
-#         exposure:
-#           include: health,prometheus,metrics
-# ─────────────────────────────────────────────────────────────────────────────
+
 apiVersion: v1
 kind: ConfigMap
 metadata:

@@ -1,14 +1,12 @@
-# ─────────────────────────────────────────────────────────────────────────────
+
 # Monitoring Stack: Prometheus + Grafana
-#
 # Deploy with:  kubectl apply -f k8s/monitoring/
-#
 # Access Grafana:  kubectl port-forward svc/grafana 3000:3000 -n monitoring
 #   → http://localhost:3000  (admin / admin)
 # Access Prometheus: kubectl port-forward svc/prometheus 9090:9090 -n monitoring
-# ─────────────────────────────────────────────────────────────────────────────
 
-# ── Prometheus ──────────────────────────────────────────────────────────────
+
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -59,7 +57,7 @@ spec:
     - port: 9090
       targetPort: 9090
 
-# ── Grafana ──────────────────────────────────────────────────────────────────
+
 ---
 apiVersion: apps/v1
 kind: Deployment

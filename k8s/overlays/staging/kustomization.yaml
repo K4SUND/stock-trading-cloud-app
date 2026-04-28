@@ -9,7 +9,7 @@ resources:
   - ../../base
 
 # Image section — the pipeline updates these via:
-#   kustomize edit set image stock-trading-<svc>=<user>/stock-trading-<svc>:sha-<commit>
+#  kustomize edit set image stock-trading-<svc>=<user>/stock-trading-<svc>:sha-<commit>
 # Placeholders below are replaced on every deploy so staging always runs
 # the exact commit that passed Sonar + tests.
 images:
