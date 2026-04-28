@@ -20,6 +20,7 @@ public class SecurityConfig {
                 .cors(Customizer.withDefaults())
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/actuator/**").permitAll()
                         .requestMatchers("/api/payments/internal/**").permitAll()
                         .requestMatchers("/api/payments/admin/**").hasAuthority("ROLE_ADMIN")
                         .anyRequest().authenticated())

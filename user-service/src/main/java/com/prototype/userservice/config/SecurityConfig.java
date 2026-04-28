@@ -29,6 +29,7 @@ public class SecurityConfig {
                                 new AntPathRequestMatcher("/api/users/register"),
                                 new AntPathRequestMatcher("/api/users/internal/**")
                         ).permitAll()
+                        .requestMatchers("/actuator/**").permitAll()
                         .requestMatchers(new AntPathRequestMatcher("/api/users/admin/**")).hasAuthority("ROLE_ADMIN")
                         .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
